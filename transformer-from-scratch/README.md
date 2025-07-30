@@ -17,4 +17,4 @@ press `run all`.
 
 for future math reference:
 
-<img src="whiteboard.jpg" width="400"/>
+<img src="whiteboard.webp" width="400"/>
