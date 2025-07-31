@@ -1,6 +1,8 @@
+# Transformer from scratch - but not in scratch
+
 ### getting started
 
-```
+```bash
 # first install uv (`brew install uv` i think)
 
 uv init
