@@ -20,6 +20,6 @@ for future math reference:
 <img src="whiteboard.webp" width="400"/>
 
 ### remaining todos
-[] fix softmax after all mlps, should only be on last
-[] add tinyshakespear for some training data
-[] add causal masking for training
+- [ ] fix softmax after all mlps, should only be on last
+- [ ] add tinyshakespear for some training data
+- [ ] add causal masking for training
