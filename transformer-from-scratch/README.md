@@ -22,6 +22,9 @@ for future math reference:
 <img src="whiteboard.webp" width="400"/>
 
 ### remaining todos
-- [ ] fix softmax after all mlps, should only be on last
-- [ ] add tinyshakespear for some training data
+- [x] fix softmax after all mlps, should only be on last
+- [ ] add layer normalization
+- [ ] add weight initialization
 - [ ] add causal masking for training
+- [ ] add tinyshakespear for some training data
+- [ ] ... many other engineering concerns
