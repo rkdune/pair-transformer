@@ -15,8 +15,7 @@ numpy-stl
 mediapy
 pandas
 scikit-learn
-# wandb==0.13.10
-# maybe try wandb>= 0.15.0 ?
+wandb>=0.15.0
 ftfy
 tensorboard
 pygame
@@ -47,3 +46,4 @@ ale-py
 protobuf==3.20.3
 mujoco
 imageio-ffmpeg
+python-dotenv
