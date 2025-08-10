@@ -33,10 +33,11 @@ press `run all`.
 
 ### remaining todos
 - [x] fix softmax after all mlps, should only be on last
-- [ ] add layer normalization
-- [ ] add weight initialization
+- [x] add layer normalization
+- [x] add weight initialization
 - [x] add causal masking for training
 - [x] add tinyshakespere for some training data
 - [x] add param counting
 - [x] add logging w/ wandb
+- [x] add muon
 - [ ] add attention sink
