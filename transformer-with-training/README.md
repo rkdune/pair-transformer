@@ -40,4 +40,3 @@ press `run all`.
 - [x] add param counting
 - [x] add logging w/ wandb
 - [ ] add attention sink
-- [ ] ... many other engineering concerns
