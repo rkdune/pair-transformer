@@ -1,35 +1,52 @@
-### getting started
+# Transformer from Scratch
 
-```
-# first install uv (`brew install uv` or `curl -LsSf https://astral.sh/uv/install.sh | sh`, look on `https://docs.astral.sh/uv/getting-started/installation/` for more options)
-```
-```
-# setup your venv
+### Setup
+
+```bash
+# Install uv package manager if not installed already
+brew install uv  # or see https://docs.astral.sh/uv/getting-started/installation/
+
+# Create virtual environment and install dependencies
 uv init
 uv venv
-```
-```
-# install requirements
 uv pip install -r requirements.txt
 ```
 
-### logging
-if you have an account on [Weights & Biases (wandb.ai)](https://wandb.ai), create a .env file with the following values
-```env
-WANDB_API_KEY= your_wandb_api_key
-WANDB_PROJECT= your_project name (usually within your "team")
-WANDB_ENTITY= your_entity_name (usually your "team" name)
+### Training
+
+```bash
+uv run train.py
 ```
-and change `config = Config(wandb_enabled=False)` to `config = Config(wandb_enabled=True)`
 
-### training
-open your jupyter notebook and select the kernel as the venv you just created.
+If you want to train in a notebook, press `run all` in the `notebooks/training.ipynb` file.
 
-press `run all`.
+### File Structure
+
+```
+├── train.py          # Main training script and inference
+├── config.py         # Model and training configuration
+├── model.py          # Transformer architecture (Attention, MLP, etc.)
+├── data.py           # DataLoader for tiny_shakespeare
+├── optimizer.py      # Muon/AdamW optimizer setup
+├── utils.py          # Shared utilities (tokenizer)
+└── data/             # Training data directory
+    └── tiny_shakespeare.txt
+└── notebooks/        # Directory to hold jupyter notebooks
+    └── training.ipynb
+```
+
+### Logging (Optional)
+
+For [Weights & Biases](https://wandb.ai) logging, create `.env`:
+```env
+WANDB_API_KEY=your_api_key
+WANDB_PROJECT=your_project_name
+WANDB_ENTITY=your_entity_name
+```
 
 ### for future math reference:
 
-<img src="whiteboard.webp" width="400"/>
+<img src="assets/whiteboard.webp" width="400"/>
 
 ### remaining todos
 - [x] fix softmax after all mlps, should only be on last
@@ -40,4 +57,5 @@ press `run all`.
 - [x] add param counting
 - [x] add logging w/ wandb
 - [x] add muon
+- [x] modularize notebook into python files
 - [ ] add attention sink
