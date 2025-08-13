@@ -13,7 +13,7 @@ from utils import tokenizer, parse_args
 # imports from other files
 from config import Config
 from data import DataLoader
-from model import Transformer 
+from model import Transformer
 from optimizer import create_optimizer
 
 
@@ -23,7 +23,7 @@ def inference(inference_config, inference_model, text="They fear us"):
     x = x.unsqueeze(0)
 
     print("*"*50)
-    
+
     # Move input tensor to the same device as the model
     if inference_model:
         print("using passed in model for inference")
@@ -33,7 +33,7 @@ def inference(inference_config, inference_model, text="They fear us"):
         inference_model = Transformer(inference_config)
         print("using random model for inference")
         device = inference_config.device
-    
+
     x = x.to(device)
     out = inference_model(x)
     pred_tokens = out.argmax(dim=-1)
@@ -50,7 +50,7 @@ def inference(inference_config, inference_model, text="They fear us"):
     print("sanity check: all predicted tokens")
     for num, token in enumerate(pred_tokens.flatten()):
         decoded = tokenizer.decode([token.item()])
-        
+
         if num == (len(pred_tokens.flatten()) - 1):
             print(f"** Token {token} -> '{decoded}' **")
         else:
@@ -64,7 +64,7 @@ def training(model_config):
 
     if device == "cuda":
         torch.cuda.manual_seed(42)
-    
+
     if model_config.wandb_enabled:
         # Initialize wandb
         wandb.init(
@@ -97,41 +97,48 @@ def training(model_config):
 
     model = Transformer(model_config).to(device)
     # model = torch.compile(model) # temporary comment to resolve errors with metal
-    losses = []
-    
+
     # Create optimizer based on config
     optimizer = create_optimizer(model, model_config)
+    
+    # Track global training time
+    global_start_time = time.time()
 
     for epoch in range(model_config.epochs):
         print(f"Epoch {epoch + 1}/{model_config.epochs}")
 
         num_batches = int(len(train_loader.tokens) / (train_loader.batch_size * train_loader.seq_len))
+        effective_batches = num_batches // model_config.accumulation_steps
 
-        for batch in range(num_batches):
-            batch_start_time = time.time()
-            
-            x, y = train_loader.next_batch()
-
-            # Forward pass
-            logits = model(x)
-            loss = F.cross_entropy(logits.view(-1, logits.size(-1)), y.view(-1))
-
-            # Backward pass
+        for effective_batch in range(effective_batches):
             optimizer.zero_grad()
-            loss.backward()
-            
-            # Calculate gradient norm
+            loss_accum = 0.0
+
+            for accum_step in range(model_config.accumulation_steps):
+                batch_start_time = time.time()
+
+                x, y = train_loader.next_batch()
+
+                # Forward pass
+                logits = model(x)
+                loss = F.cross_entropy(logits.view(-1, logits.size(-1)), y.view(-1))
+                loss = loss / model_config.accumulation_steps  # Scale loss
+                loss_accum += loss.item()
+
+                # Backward pass
+                loss.backward()
+
+            # Calculate gradient norm and step after accumulation
             grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), float('inf'))
-            
             optimizer.step()
-            
+
             batch_end_time = time.time()
             time_per_step = batch_end_time - batch_start_time
-            
-            # Calculate tokens per second
-            total_tokens = model_config.batch_size * model_config.context_len
+
+            # Calculate tokens per second (for effective batch)
+            total_tokens = model_config.effective_batch_size * model_config.context_len
             tokens_per_sec = total_tokens / time_per_step
-            
+
             # Get current learning rate
             if model_config.use_muon and hasattr(optimizer, 'param_groups') and len(optimizer.param_groups) > 1:
                 # For Muon optimizer, show both learning rates
@@ -144,39 +151,43 @@ def training(model_config):
                 lr_display = f"{current_lr:.6f}"
 
             if model_config.wandb_enabled:
+                # Calculate global elapsed time
+                global_elapsed_time = time.time() - global_start_time
+                
                 # Log to wandb
                 wandb_metrics = {
-                    "CE loss": loss.item(),
+                    "loss": loss_accum,
                     "epoch": epoch + 1,
-                    "batch": batch,
-                    "step": epoch * num_batches + batch,
+                    "effective_batch": effective_batch,
+                    "step": epoch * effective_batches + effective_batch,
                     "grad_norm": grad_norm.item(),
                     "time_per_step": time_per_step,
-                    "tokens_per_sec": tokens_per_sec
+                    "tokens_per_sec": tokens_per_sec,
+                    "global_time": global_elapsed_time
                 }
-                
+
                 # Add learning rate(s) to wandb
                 if model_config.use_muon and hasattr(optimizer, 'param_groups') and len(optimizer.param_groups) > 1:
                     wandb_metrics["muon_lr"] = optimizer.param_groups[0]['lr']
                     wandb_metrics["adamw_lr"] = optimizer.param_groups[1]['lr']
                 else:
                     wandb_metrics["learning_rate"] = optimizer.param_groups[0]['lr']
-                
+
                 wandb.log(wandb_metrics)
 
-            if batch % 10 == 0 or batch == num_batches:
-                print(f"Batch {batch}/{num_batches}, Loss: {loss.item():.4f}, Grad Norm: {grad_norm.item():.4f}, LR: {lr_display}, Time/Step: {time_per_step:.3f}s, Tok/s: {tokens_per_sec:.0f}")
+            if effective_batch % 10 == 0 or effective_batch + 1 == effective_batches:
+                print(f"Effective Batch {effective_batch+1}/{effective_batches}, Loss: {loss_accum:.4f}, Grad Norm: {grad_norm.item():.4f}, LR: {lr_display}, Time/Step: {time_per_step:.3f}s, Tok/s: {tokens_per_sec:.0f}")
 
     if model_config.wandb_enabled:
         wandb.finish()
-        
+
     return model
 
 
 if __name__ == "__main__":
     # Parse command line arguments
     config_overrides = parse_args()
-    
+
     # Create config with defaults, then apply command line overrides
     config = Config(wandb_enabled=True, **config_overrides)
     config.display_config(extended=True)

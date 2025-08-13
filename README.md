@@ -58,7 +58,7 @@ WANDB_ENTITY=your_entity_name
 - [x] add logging w/ wandb
 - [x] add muon
 - [x] modularize notebook into python files
-- [ ] gradient accumulation
+- [x] gradient accumulation
 - [x] add attention sink
 - [x] improve logging: needs to also show gradient norm, learning rate, time per step, tok/s
 - [ ] change tokenizer (controllable in config between tiktoken, o200k_base, and a third one better for tool calling, optional fourth maybe custom(?))

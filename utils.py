@@ -17,6 +17,7 @@ def parse_args():
     parser.add_argument('--lr', type=float, help='Learning rate')
     parser.add_argument('--epochs', type=int, help='Number of epochs')
     parser.add_argument('--use_muon', type=bool, help='Use Muon optimizer')
+    parser.add_argument('--accumulation_steps', type=int, help='Gradient accumulation steps')
     
     # Logging parameters
     parser.add_argument('--wandb_enabled', type=bool, help='Enable wandb logging')
