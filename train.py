@@ -4,6 +4,7 @@ import numpy as np
 import wandb
 import os
 import argparse
+import time
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -107,6 +108,8 @@ def training(model_config):
         num_batches = int(len(train_loader.tokens) / (train_loader.batch_size * train_loader.seq_len))
 
         for batch in range(num_batches):
+            batch_start_time = time.time()
+            
             x, y = train_loader.next_batch()
 
             # Forward pass
@@ -116,19 +119,53 @@ def training(model_config):
             # Backward pass
             optimizer.zero_grad()
             loss.backward()
+            
+            # Calculate gradient norm
+            grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), float('inf'))
+            
             optimizer.step()
+            
+            batch_end_time = time.time()
+            time_per_step = batch_end_time - batch_start_time
+            
+            # Calculate tokens per second
+            total_tokens = model_config.batch_size * model_config.context_len
+            tokens_per_sec = total_tokens / time_per_step
+            
+            # Get current learning rate
+            if model_config.use_muon and hasattr(optimizer, 'param_groups') and len(optimizer.param_groups) > 1:
+                # For Muon optimizer, show both learning rates
+                muon_lr = optimizer.param_groups[0]['lr']  # Hidden weights
+                adamw_lr = optimizer.param_groups[1]['lr']  # Other params
+                lr_display = f"Muon:{muon_lr:.6f}/AdamW:{adamw_lr:.6f}"
+            else:
+                # For AdamW optimizer
+                current_lr = optimizer.param_groups[0]['lr']
+                lr_display = f"{current_lr:.6f}"
 
             if model_config.wandb_enabled:
                 # Log to wandb
-                wandb.log({
+                wandb_metrics = {
                     "loss": loss.item(),
                     "epoch": epoch + 1,
                     "batch": batch,
-                    "step": epoch * num_batches + batch
-                })
+                    "step": epoch * num_batches + batch,
+                    "grad_norm": grad_norm.item(),
+                    "time_per_step": time_per_step,
+                    "tokens_per_sec": tokens_per_sec
+                }
+                
+                # Add learning rate(s) to wandb
+                if model_config.use_muon and hasattr(optimizer, 'param_groups') and len(optimizer.param_groups) > 1:
+                    wandb_metrics["muon_lr"] = optimizer.param_groups[0]['lr']
+                    wandb_metrics["adamw_lr"] = optimizer.param_groups[1]['lr']
+                else:
+                    wandb_metrics["learning_rate"] = optimizer.param_groups[0]['lr']
+                
+                wandb.log(wandb_metrics)
 
             if batch % 10 == 0 or batch == num_batches:
-                print(f"Batch {batch}/{num_batches}, Loss: {loss.item():.4f}")
+                print(f"Batch {batch}/{num_batches}, Loss: {loss.item():.4f}, Grad Norm: {grad_norm.item():.4f}, LR: {lr_display}, Time/Step: {time_per_step:.3f}s, Tok/s: {tokens_per_sec:.0f}")
 
     if model_config.wandb_enabled:
         wandb.finish()
