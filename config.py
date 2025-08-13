@@ -12,7 +12,7 @@ class Config():
     
     # TRAINING HYPERPARAMS
     batch_size = 8
-    num_epochs = 1  # generally should keep this to 1
+    epochs = 1  # generally should keep this to 1
     lr = 3e-4
     muon_lr = 0.02 # from muon repo: "only the lr and weight decay have to be tuned"
     muon_momentum = 0.95
@@ -24,6 +24,7 @@ class Config():
     # LOGGING & OBSERVABILITY
     wandb_enabled = True
     print_per_layer_params = False
+    run = None  # wandb run name
 
     # Inference
     temperature = 1.0

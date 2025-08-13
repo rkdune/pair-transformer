@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import einops
-I import math
+import math
 
 class Embedding(nn.Module):
     def __init__(self, config):

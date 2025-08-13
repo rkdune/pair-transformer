@@ -79,7 +79,7 @@ def training(model_config):
                 "context_len": model_config.context_len,
                 "attention_dim": model_config.attention_dim,
                 "device": model_config.device,
-                "num_epochs": model_config.num_epochs,
+                "epochs": model_config.epochs,
                 "lr": model_config.lr,
                 "betas": model_config.betas,
                 "eps": model_config.eps,
@@ -101,8 +101,8 @@ def training(model_config):
     # Create optimizer based on config
     optimizer = create_optimizer(model, model_config)
 
-    for epoch in range(model_config.num_epochs):
-        print(f"Epoch {epoch + 1}/{model_config.num_epochs}")
+    for epoch in range(model_config.epochs):
+        print(f"Epoch {epoch + 1}/{model_config.epochs}")
 
         num_batches = int(len(train_loader.tokens) / (train_loader.batch_size * train_loader.seq_len))
 

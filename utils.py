@@ -15,7 +15,7 @@ def parse_args():
     
     # Training parameters  
     parser.add_argument('--lr', type=float, help='Learning rate')
-    parser.add_argument('--num_epochs', type=int, help='Number of epochs')
+    parser.add_argument('--epochs', type=int, help='Number of epochs')
     parser.add_argument('--use_muon', type=bool, help='Use Muon optimizer')
     
     # Logging parameters
