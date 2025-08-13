@@ -146,7 +146,7 @@ def training(model_config):
             if model_config.wandb_enabled:
                 # Log to wandb
                 wandb_metrics = {
-                    "loss": loss.item(),
+                    "CE loss": loss.item(),
                     "epoch": epoch + 1,
                     "batch": batch,
                     "step": epoch * num_batches + batch,
