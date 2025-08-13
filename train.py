@@ -3,16 +3,18 @@ import torch.nn.functional as F
 import numpy as np
 import wandb
 import os
+import argparse
 from dotenv import load_dotenv
 load_dotenv()
 
-from utils import tokenizer
+from utils import tokenizer, parse_args
 
 # imports from other files
 from config import Config
 from data import DataLoader
 from model import Transformer 
 from optimizer import create_optimizer
+
 
 def inference(inference_config, inference_model, text="They fear us"):
     tokens = tokenizer.encode(text)
@@ -67,6 +69,7 @@ def training(model_config):
         wandb.init(
             project=os.getenv("WANDB_PROJECT"),
             entity=os.getenv("WANDB_ENTITY"),
+            name=model_config.run,
             config={
                 "vocab_size": model_config.vocab_size,
                 "embedding_dim": model_config.embedding_dim,
@@ -89,7 +92,7 @@ def training(model_config):
             }
         )
 
-    train_loader = DataLoader(8, 1024)
+    train_loader = DataLoader(model_config.batch_size, model_config.context_len, device)
 
     model = Transformer(model_config).to(device)
     # model = torch.compile(model) # temporary comment to resolve errors with metal
@@ -101,14 +104,10 @@ def training(model_config):
     for epoch in range(model_config.num_epochs):
         print(f"Epoch {epoch + 1}/{model_config.num_epochs}")
 
-        # Reset data loader position at the start of each epoch
-        train_loader.current_pos = 0
-
         num_batches = int(len(train_loader.tokens) / (train_loader.batch_size * train_loader.seq_len))
 
         for batch in range(num_batches):
             x, y = train_loader.next_batch()
-            x, y = x.to(device), y.to(device)
 
             # Forward pass
             logits = model(x)
@@ -138,7 +137,11 @@ def training(model_config):
 
 
 if __name__ == "__main__":
-    config = Config(wandb_enabled=True, num_epochs=1)
+    # Parse command line arguments
+    config_overrides = parse_args()
+    
+    # Create config with defaults, then apply command line overrides
+    config = Config(wandb_enabled=True, **config_overrides)
     config.display_config(extended=True)
     print(f"theoretical start loss: {np.log(config.vocab_size)}")
 

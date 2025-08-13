@@ -30,8 +30,7 @@ def create_optimizer(model, model_config):
 
         print(f"Muon params: {sum(p.numel() for p in hidden_weights):,}")
         print(f"AdamW params: {sum(p.numel() for p in other_params):,}")
-        print(f"Total: {model_config.non_learnable_params + sum(p.numel() for p in hidden_weights) + sum(p.numel() for p in 
-        other_params):,}")
+        print(f"Total: {model_config.non_learnable_params + sum(p.numel() for p in hidden_weights) + sum(p.numel() for p in other_params):,}")
 
         print("*"*50)
         

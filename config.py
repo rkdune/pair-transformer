@@ -11,6 +11,7 @@ class Config():
     context_len = 1024
     
     # TRAINING HYPERPARAMS
+    batch_size = 8
     num_epochs = 1  # generally should keep this to 1
     lr = 3e-4
     muon_lr = 0.02 # from muon repo: "only the lr and weight decay have to be tuned"
@@ -23,6 +24,9 @@ class Config():
     # LOGGING & OBSERVABILITY
     wandb_enabled = True
     print_per_layer_params = False
+
+    # Inference
+    temperature = 1.0
     
     def __init__(self, **kwargs):
         # Set all class attributes as instance attributes first
@@ -54,7 +58,9 @@ class Config():
             "W_Qs": self.num_blocks * self.embedding_dim * self.embedding_dim, 
             "W_Ks": self.num_blocks * self.embedding_dim * self.embedding_dim, 
             "W_Vs": self.num_blocks * self.embedding_dim * self.embedding_dim, 
-            "W_Out": self.num_blocks * self.embedding_dim * self.embedding_dim}
+            "W_Out": self.num_blocks * self.embedding_dim * self.embedding_dim,
+            "attention_sink_scalars": self.num_blocks * self.num_heads,
+            "layer_norms": (self.num_blocks * 2 + 1) * 2 * self.embedding_dim}
         self.learnable_params = (lambda d: sum(d.values()))(self.learnable_params_dict)
 
         # non-learnable (fixed) params
