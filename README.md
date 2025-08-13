@@ -18,6 +18,30 @@ uv pip install -r requirements.txt
 uv run train.py
 ```
 
+```bash
+# examples with flags
+uv run train.py --run "a cool ablation" --accum_steps = 4```
+
+#### Training Flags
+
+```bash
+# Model architecture parameters
+--num_blocks 6              # Number of transformer blocks
+--num_heads 8               # Number of attention heads
+--embedding_dim 512         # Model embedding dimension
+--context_len 1024          # Maximum sequence length
+
+# Training hyperparameters
+--lr 3e-4                   # Learning rate for AdamW optimizer
+--epochs 1                  # Number of training epochs
+--use_muon True             # Use Muon optimizer for hidden layers
+--accumulation_steps 4      # Gradient accumulation steps
+
+# Logging parameters
+--wandb_enabled True        # Enable Weights & Biases logging
+--run "my_experiment"       # Name for wandb run
+```
+
 If you want to train in a notebook, press `run all` in the `notebooks/training.ipynb` file.
 
 ### File Structure
