@@ -176,7 +176,7 @@ def training(model_config):
                 wandb.log(wandb_metrics)
 
             if effective_batch % 10 == 0 or effective_batch + 1 == effective_batches:
-                print(f"Effective Batch {effective_batch+1}/{effective_batches}, Loss: {loss_accum:.4f}, Grad Norm: {grad_norm.item():.4f}, LR: {lr_display}, Time/Step: {time_per_step:.3f}s, Tok/s: {tokens_per_sec:.0f}")
+                print(f"Eff. Batch {effective_batch+1}/{effective_batches}, Loss: {loss_accum:.4f}, Grad Norm: {grad_norm.item():.4f}, LR: {lr_display}, Time/Step: {time_per_step:.3f}s, Tok/s: {tokens_per_sec:.0f}")
 
     if model_config.wandb_enabled:
         wandb.finish()

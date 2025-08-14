@@ -85,4 +85,6 @@ WANDB_ENTITY=your_entity_name
 - [x] gradient accumulation
 - [x] add attention sink
 - [x] improve logging: needs to also show gradient norm, learning rate, time per step, tok/s
+- [x] vectorized batch loading
+- [ ] data loader chunking
 - [ ] change tokenizer (controllable in config between tiktoken, o200k_base, and a third one better for tool calling, optional fourth maybe custom(?))
