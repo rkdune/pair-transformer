@@ -99,14 +99,14 @@ def training(model_config):
 
     train_loader = DataLoader(model_config.batch_size, model_config.context_len, model_config.tokenizer, device)
     
+    # Get professional data statistics
+    data_stats = train_loader.get_stats()
+    
     # Print clean tokenizer and data info
     print_tokenizer_data_info(
         model_config.tokenizer, 
         model_config.vocab_size,
-        train_loader.total_tokens,
-        model_config.batch_size,
-        model_config.context_len,
-        train_loader.max_sequences
+        data_stats
     )
 
     model = Transformer(model_config).to(device)
@@ -134,10 +134,10 @@ def training(model_config):
     max_steps = model_config.max_steps
     final_loss = None  # Track final loss for saving
 
-    # Calculate total steps for all epochs
-    num_batches = int(len(train_loader.tokens) / (train_loader.batch_size * train_loader.seq_len))
-    effective_batches = num_batches // model_config.accumulation_steps
-    total_planned_steps = effective_batches * model_config.epochs
+    # Calculate total steps using professional data loader stats
+    batches_per_epoch = data_stats['batches_per_epoch']
+    effective_batches_per_epoch = batches_per_epoch // model_config.accumulation_steps
+    total_planned_steps = effective_batches_per_epoch * model_config.epochs
     
     # Print training header with theoretical start loss
     print_training_header(model_config.epochs, total_planned_steps)
@@ -146,7 +146,7 @@ def training(model_config):
     for epoch in range(model_config.epochs):
         print(f"\nEpoch {epoch + 1}/{model_config.epochs}")
         
-        for effective_batch in range(effective_batches):
+        for effective_batch in range(effective_batches_per_epoch):
             # Check if we've reached the step limit
             if max_steps is not None and total_steps >= max_steps:
                 print(f"Reached maximum steps limit of {max_steps}. Stopping training.")
@@ -164,7 +164,7 @@ def training(model_config):
 
                 # Forward pass
                 logits = model(x)
-                loss = F.cross_entropy(logits.view(-1, logits.size(-1)), y.view(-1))
+                loss = F.cross_entropy(logits.reshape(-1, logits.size(-1)), y.reshape(-1))
                 loss = loss / model_config.accumulation_steps  # Scale loss
                 loss_accum += loss.item()
 
@@ -228,10 +228,10 @@ def training(model_config):
                 wandb.log(wandb_metrics)
 
             # Clean progress reporting
-            if total_steps % 2 == 0 or effective_batch + 1 == effective_batches:
+            if total_steps % 2 == 0 or effective_batch + 1 == effective_batches_per_epoch:
                 print_training_progress(total_steps, total_planned_steps, loss_accum, 
                                       grad_norm.item(), tokens_per_sec, lr_display, time_per_step,
-                                      is_final=(effective_batch + 1 == effective_batches))
+                                      is_final=(effective_batch + 1 == effective_batches_per_epoch))
         
         # Break out of epoch loop if we've reached steps limit
         if max_steps is not None and total_steps >= max_steps:

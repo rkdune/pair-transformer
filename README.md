@@ -89,8 +89,7 @@ WANDB_ENTITY=your_entity_name
 - [x] multi tokenizer support
 - [x] max steps flag
 - [x] model saving
-- [ ] fix num batches inconsistency
-    - difference between dataloader calculating max theoretical sequences and then implementation only doing non-overlapping.
-    - also the calculation that is appearing in the logs is different from num_tokens/seq_len. 
+- [x] fix batching
+- [ ] on-by-default torch compile
 - [ ] organized console logs
 - [ ] data loader chunking

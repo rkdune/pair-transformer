@@ -47,13 +47,15 @@ def print_model_params(config):
     print(f"Non-learnable Parameters: {format_number(config.non_learnable_params)}")
     print(f"Total Parameters: {format_number(config.learnable_params + config.non_learnable_params)}")
 
-def print_tokenizer_data_info(tokenizer_name, vocab_size, total_tokens, batch_size, seq_len, max_sequences):
-    """Print clean tokenizer and data information."""
+def print_tokenizer_data_info(tokenizer_name, vocab_size, data_stats):
+    """Print clean tokenizer and data information with metrics."""
     print_section_header("TOKENIZER & DATA", "🔤")
     print(f"Tokenizer: {tokenizer_name} (vocab_size: {format_number(vocab_size)})")
-    print(f"Dataset: {format_number(total_tokens)} tokens loaded")
-    print(f"Batch Configuration: {batch_size} sequences × {seq_len} tokens")
-    print(f"Max Sequences/Epoch: {format_number(max_sequences)}")
+    print(f"Dataset: {format_number(data_stats['total_tokens'])} tokens loaded")
+    print(f"Sequence Length: {data_stats['effective_seq_len']} tokens (after x/y shift)")
+    print(f"Available Sequences: {format_number(data_stats['total_sequences'])} (non-overlapping)")
+    print(f"Batches per Epoch: {format_number(data_stats['batches_per_epoch'])}")
+    print(f"Data Utilization: {data_stats['utilization_rate']:.1%} ({format_number(data_stats['tokens_utilized'])} / {format_number(data_stats['total_tokens'])} tokens)")
 
 def print_optimizer_info(optimizer_type, muon_params=None, adamw_params=None, muon_lr=None, adamw_lr=None):
     """Print clean optimizer information."""
