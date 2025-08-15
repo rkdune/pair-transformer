@@ -234,10 +234,10 @@ def training(model_config):
                 wandb.log(wandb_metrics)
 
             # Clean progress reporting
-            if total_steps % 2 == 0 or effective_batch + 1 == effective_batches:
+            if total_steps % 2 == 0 or effective_batch + 1 == effective_batches_per_epoch:
                 print_training_progress(total_steps, total_planned_steps, loss_accum, 
                                       grad_norm.item(), tokens_per_sec, lr_display, time_per_step,
-                                      is_final=(effective_batch + 1 == effective_batches))
+                                      is_final=(effective_batch + 1 == effective_batches_per_epoch))
         
         # Break out of epoch loop if we've reached steps limit
         if max_steps is not None and total_steps >= max_steps:

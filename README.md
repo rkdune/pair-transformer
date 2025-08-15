@@ -112,3 +112,4 @@ WANDB_ENTITY=your_entity_name
 - [x] on-by-default torch compile
 - [x] organized console logs
 - [x] data loader chunking
+- [ ] create ~20 different inference test cases other than napoleon
