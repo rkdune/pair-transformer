@@ -30,6 +30,9 @@ class Config():
     save_model_dir = "models"  # Directory to save models
     save_every = None  # If set, save model every N steps
 
+    # MODEL COMPILATION
+    torch_compile = True  # Enable torch.compile for faster training (disable with --torch_compile=False)
+
     # Inference
     temperature = 1.0
 

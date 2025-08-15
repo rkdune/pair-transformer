@@ -152,6 +152,9 @@ def parse_args():
     parser.add_argument('--save_model_dir', type=str, help='Directory to save models (default: models)')
     parser.add_argument('--save_every', type=int, help='Save model every N steps (optional)')
     
+    # Model compilation parameters
+    parser.add_argument('--torch_compile', type=bool, help='Enable torch.compile for faster training (default: True)')
+    
     args = parser.parse_args()
     
     # Convert to dict, filtering out None values

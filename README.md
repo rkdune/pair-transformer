@@ -1,4 +1,5 @@
-# Transformer from Scratch
+![Pair Transformer](pair-transformer.png)
+
 
 ### Setup
 
@@ -20,7 +21,13 @@ uv run train.py
 
 ```bash
 # examples with flags
-uv run train.py --run "a cool ablation" --accum_steps = 4```
+uv run train.py --run "a cool ablation" --accumulation_steps 4 --save_model=True
+```
+
+**⚠️ Important:** If you're training on CPU or MPS (Apple Silicon), you may need to disable torch.compile:
+```bash
+uv run train.py --torch_compile=False
+```
 
 #### Training Flags
 
@@ -34,8 +41,20 @@ uv run train.py --run "a cool ablation" --accum_steps = 4```
 # Training hyperparameters
 --lr 3e-4                   # Learning rate for AdamW optimizer
 --epochs 1                  # Number of training epochs
+--max_steps 1000            # Maximum training steps (override)
 --use_muon True             # Use Muon optimizer for hidden layers
 --accumulation_steps 4      # Gradient accumulation steps
+
+# Tokenizer parameters
+--tokenizer "gpt2"          # Tokenizer to use (gpt2, o200k_base)
+
+# Model compilation
+--torch_compile True        # Enable torch.compile for faster training (default: True)
+
+# Model saving parameters
+--save_model True           # Enable model saving (required for saves)
+--save_model_dir "models"   # Directory to save models
+--save_every 100            # Save model every N steps (optional)
 
 # Logging parameters
 --wandb_enabled True        # Enable Weights & Biases logging
@@ -90,6 +109,6 @@ WANDB_ENTITY=your_entity_name
 - [x] max steps flag
 - [x] model saving
 - [x] fix batching
-- [ ] on-by-default torch compile
-- [ ] organized console logs
-- [ ] data loader chunking
+- [x] on-by-default torch compile
+- [x] organized console logs
+- [x] data loader chunking

@@ -99,7 +99,7 @@ def training(model_config):
 
     train_loader = DataLoader(model_config.batch_size, model_config.context_len, model_config.tokenizer, device)
     
-    # Get professional data statistics
+    # Get data statistics
     data_stats = train_loader.get_stats()
     
     # Print clean tokenizer and data info
@@ -110,7 +110,13 @@ def training(model_config):
     )
 
     model = Transformer(model_config).to(device)
-    # model = torch.compile(model) # temporary comment to resolve errors with metal
+    
+    # Apply torch.compile if enabled (default: True)
+    if model_config.torch_compile:
+        print("🚀 Compiling model with torch.compile for faster training...")
+        model = torch.compile(model)
+    else:
+        print("⚠️  torch.compile disabled - training will be slower")
 
     # Create optimizer based on config
     optimizer = create_optimizer(model, model_config)
@@ -134,7 +140,7 @@ def training(model_config):
     max_steps = model_config.max_steps
     final_loss = None  # Track final loss for saving
 
-    # Calculate total steps using professional data loader stats
+    # Calculate total steps using data loader stats
     batches_per_epoch = data_stats['batches_per_epoch']
     effective_batches_per_epoch = batches_per_epoch // model_config.accumulation_steps
     total_planned_steps = effective_batches_per_epoch * model_config.epochs
@@ -179,13 +185,13 @@ def training(model_config):
             total_steps += 1
             final_loss = loss_accum
             
+            batch_end_time = time.time()
+            time_per_step = batch_end_time - batch_start_time
+
             # Periodic saving if enabled
             if (model_config.save_model and model_config.save_every is not None and 
                 total_steps % model_config.save_every == 0):
                 save_model(model, model_config, total_steps, final_loss, f"step_{total_steps}")
-
-            batch_end_time = time.time()
-            time_per_step = batch_end_time - batch_start_time
 
             # Calculate tokens per second (for effective batch)
             total_tokens = model_config.effective_batch_size * model_config.context_len
@@ -228,10 +234,10 @@ def training(model_config):
                 wandb.log(wandb_metrics)
 
             # Clean progress reporting
-            if total_steps % 2 == 0 or effective_batch + 1 == effective_batches_per_epoch:
+            if total_steps % 2 == 0 or effective_batch + 1 == effective_batches:
                 print_training_progress(total_steps, total_planned_steps, loss_accum, 
                                       grad_norm.item(), tokens_per_sec, lr_display, time_per_step,
-                                      is_final=(effective_batch + 1 == effective_batches_per_epoch))
+                                      is_final=(effective_batch + 1 == effective_batches))
         
         # Break out of epoch loop if we've reached steps limit
         if max_steps is not None and total_steps >= max_steps:
