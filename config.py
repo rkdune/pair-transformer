@@ -1,9 +1,7 @@
 import torch
+from utils import Tokenizer
 
 class Config():
-    # FIXED PARAMS
-    vocab_size = 50257  # tiktoken vocab size for gpt2
-
     # CHANGEABLE MODEL ARCHITECTURE PARAMS
     embedding_dim = 720
     num_blocks = 2
@@ -20,6 +18,7 @@ class Config():
     eps = 1e-8
     weight_decay = 0.01
     use_muon = True  # whether to use Muon optimizer for hidden layers
+    max_steps = None  # If None, train for full epochs; if set, limit to this many steps
 
     # LOGGING & OBSERVABILITY
     wandb_enabled = True
@@ -31,6 +30,9 @@ class Config():
 
     # Gradient Accumulation
     accumulation_steps = 1
+
+    # Tokenizer
+    tokenizer = "gpt2"
 
     def __init__(self, **kwargs):
         # Set all class attributes as instance attributes first
@@ -44,6 +46,9 @@ class Config():
                 setattr(self, key, value)
             else:
                 raise ValueError(f"Unknown config parameter: {key}")
+
+        # vocab size depends on tokenizer (centralized management)
+        self.vocab_size = Tokenizer.get_vocab_size(self.tokenizer)
 
         # Derived params that depend on other params
         self.mlp_dim = 2 * self.embedding_dim
@@ -74,7 +79,7 @@ class Config():
         # gradient accumulation
         self.effective_batch_size = self.batch_size * self.accumulation_steps
 
-    def display_config(self, extended):
+    def display_config(self, extended=True):
         if extended:
             print(f"learnable params dict: {self.learnable_params_dict}")
             print(f"total # of learnable params: {self.learnable_params:,}")
@@ -84,3 +89,4 @@ class Config():
             print("*"*50)
         else:
             print(f"learnable params: {self.learnable_params:,}, non-learnable params: {self.non_learnable_params:,}, total params: {self.learnable_params + self.non_learnable_params:,}")
+

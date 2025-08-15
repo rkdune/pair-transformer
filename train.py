@@ -8,7 +8,7 @@ import time
 from dotenv import load_dotenv
 load_dotenv()
 
-from utils import tokenizer, parse_args
+from utils import Tokenizer, parse_args
 
 # imports from other files
 from config import Config
@@ -18,6 +18,7 @@ from optimizer import create_optimizer
 
 
 def inference(inference_config, inference_model, text="They fear us"):
+    tokenizer = Tokenizer.get_tokenizer(inference_config.tokenizer)
     tokens = tokenizer.encode(text)
     x = torch.tensor(tokens)
     x = x.unsqueeze(0)
@@ -88,12 +89,13 @@ def training(model_config):
                 "use_muon": model_config.use_muon,
                 "muon_lr": model_config.muon_lr,
                 "muon_momentum": model_config.muon_momentum,
+                "tokenizer": model_config.tokenizer,
                 "learnable_params": model_config.learnable_params,
                 "total_params": model_config.learnable_params + model_config.non_learnable_params
             }
         )
 
-    train_loader = DataLoader(model_config.batch_size, model_config.context_len, device)
+    train_loader = DataLoader(model_config.batch_size, model_config.context_len, model_config.tokenizer, device)
 
     model = Transformer(model_config).to(device)
     # model = torch.compile(model) # temporary comment to resolve errors with metal
@@ -103,6 +105,10 @@ def training(model_config):
     
     # Track global training time
     global_start_time = time.time()
+    
+    # Track total steps for steps limit
+    total_steps = 0
+    max_steps = model_config.max_steps
 
     for epoch in range(model_config.epochs):
         print(f"Epoch {epoch + 1}/{model_config.epochs}")
@@ -111,6 +117,10 @@ def training(model_config):
         effective_batches = num_batches // model_config.accumulation_steps
 
         for effective_batch in range(effective_batches):
+            # Check if we've reached the step limit
+            if max_steps is not None and total_steps >= max_steps:
+                print(f"Reached maximum steps limit of {max_steps}. Stopping training.")
+                break
             optimizer.zero_grad()
             loss_accum = 0.0
 
@@ -131,6 +141,9 @@ def training(model_config):
             # Calculate gradient norm and step after accumulation
             grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), float('inf'))
             optimizer.step()
+            
+            # Increment step counter
+            total_steps += 1
 
             batch_end_time = time.time()
             time_per_step = batch_end_time - batch_start_time
@@ -159,7 +172,7 @@ def training(model_config):
                     "loss": loss_accum,
                     "epoch": epoch + 1,
                     "effective_batch": effective_batch,
-                    "step": epoch * effective_batches + effective_batch,
+                    "step": total_steps,
                     "grad_norm": grad_norm.item(),
                     "time_per_step": time_per_step,
                     "tokens_per_sec": tokens_per_sec,
@@ -177,6 +190,10 @@ def training(model_config):
 
             if effective_batch % 10 == 0 or effective_batch + 1 == effective_batches:
                 print(f"Eff. Batch {effective_batch+1}/{effective_batches}, Loss: {loss_accum:.4f}, Grad Norm: {grad_norm.item():.4f}, LR: {lr_display}, Time/Step: {time_per_step:.3f}s, Tok/s: {tokens_per_sec:.0f}")
+        
+        # Break out of epoch loop if we've reached steps limit
+        if max_steps is not None and total_steps >= max_steps:
+            break
 
     if model_config.wandb_enabled:
         wandb.finish()

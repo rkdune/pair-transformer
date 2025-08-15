@@ -1,8 +1,8 @@
 import torch
-from utils import tokenizer
+from utils import Tokenizer
 
 class DataLoader:
-    def __init__(self, B, T, device='cpu', pre_tokenized=False):
+    def __init__(self, B, T, config_tokenizer, device='cpu', pre_tokenized=False):
         self.batch_size = B # num of sequences processed together in each batch
         self.seq_len = T # how many tokens are in each sequence/batch
         self.device = device
@@ -12,6 +12,7 @@ class DataLoader:
             with open("data/tiny_shakespeare.txt", "r") as f:
                 text = f.read()
 
+            tokenizer = Tokenizer.get_tokenizer(config_tokenizer)
             encoding = tokenizer.encode(text)
             self.tokens = torch.tensor(encoding).to(device)
             print("tokenizing data")

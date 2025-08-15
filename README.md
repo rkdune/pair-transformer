@@ -72,7 +72,7 @@ WANDB_ENTITY=your_entity_name
 
 <img src="assets/whiteboard.webp" width="400"/>
 
-### remaining todos
+### todos
 - [x] fix softmax after all mlps, should only be on last
 - [x] add layer normalization
 - [x] add weight initialization
@@ -86,5 +86,7 @@ WANDB_ENTITY=your_entity_name
 - [x] add attention sink
 - [x] improve logging: needs to also show gradient norm, learning rate, time per step, tok/s
 - [x] vectorized batch loading
+- [x] multi tokenizer support
+- [x] max steps flag
+- [ ] model saving
 - [ ] data loader chunking
-- [ ] change tokenizer (controllable in config between tiktoken, o200k_base, and a third one better for tool calling, optional fourth maybe custom(?))
