@@ -9,8 +9,6 @@ except ImportError:
 
 def create_optimizer(model, model_config):
     if model_config.use_muon and MUON_AVAILABLE:
-        print("Using Muon optimizer for hidden layers")
-        
         # Separate parameters for Muon optimization
         hidden_weights = []
         other_params = []
@@ -28,11 +26,18 @@ def create_optimizer(model, model_config):
                 if model_config.print_per_layer_params:
                     print(f"  ADAMW: {name} - shape: {param.shape} - params: {param.numel():,}")
 
-        print(f"Muon params: {sum(p.numel() for p in hidden_weights):,}")
-        print(f"AdamW params: {sum(p.numel() for p in other_params):,}")
-        print(f"Total: {model_config.non_learnable_params + sum(p.numel() for p in hidden_weights) + sum(p.numel() for p in other_params):,}")
-
-        print("*"*50)
+        # Store optimizer info for clean printing
+        muon_params = sum(p.numel() for p in hidden_weights)
+        adamw_params = sum(p.numel() for p in other_params)
+        
+        # This will be called from the main training function for clean output
+        model_config._optimizer_info = {
+            'type': 'Hybrid',
+            'muon_params': muon_params,
+            'adamw_params': adamw_params,
+            'muon_lr': model_config.muon_lr,
+            'adamw_lr': model_config.lr
+        }
         
         param_groups = [
             {
@@ -54,9 +59,22 @@ def create_optimizer(model, model_config):
         optimizer = SingleDeviceMuonWithAuxAdam(param_groups)
     else:
         if model_config.use_muon and not MUON_AVAILABLE:
-            print("Muon requested but not available, falling back to AdamW")
+            model_config._optimizer_info = {
+                'type': 'AdamW (Muon fallback)',
+                'muon_params': None,
+                'adamw_params': sum(p.numel() for p in model.parameters()),
+                'muon_lr': None,
+                'adamw_lr': model_config.lr
+            }
         else:
-            print("Using AdamW optimizer")
+            model_config._optimizer_info = {
+                'type': 'AdamW',
+                'muon_params': None,
+                'adamw_params': sum(p.numel() for p in model.parameters()),
+                'muon_lr': None,
+                'adamw_lr': model_config.lr
+            }
+        
         optimizer = torch.optim.AdamW(model.parameters(), lr=model_config.lr, 
                                      betas=model_config.betas, eps=model_config.eps, 
                                      weight_decay=model_config.weight_decay)

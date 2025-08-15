@@ -15,7 +15,6 @@ class DataLoader:
             tokenizer = Tokenizer.get_tokenizer(config_tokenizer)
             encoding = tokenizer.encode(text)
             self.tokens = torch.tensor(encoding).to(device)
-            print("tokenizing data")
 
         else:
             # change this later to correctly deal with pre-tokenized data
@@ -27,10 +26,10 @@ class DataLoader:
         # Calculate max possible starting position to avoid out-of-bounds
         # E.g. if you have 1000 tokens total and have seq_len=100, then max_start_pos is 899.
         self.max_start_pos = len(self.tokens) - self.seq_len - 1
-
-        print(f"loaded {len(self.tokens)} tokens with batch size of {self.batch_size} sequences and {self.seq_len} tokens per sequence in the batch")
-        print(f"max sequences per epoch: {self.max_start_pos // self.batch_size}")
-        print("*"*50)
+        
+        # Store info for clean printing
+        self.total_tokens = len(self.tokens)
+        self.max_sequences = self.max_start_pos // self.batch_size
 
     def next_batch(self):
         B, T = self.batch_size, self.seq_len

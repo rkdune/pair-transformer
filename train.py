@@ -8,7 +8,9 @@ import time
 from dotenv import load_dotenv
 load_dotenv()
 
-from utils import Tokenizer, parse_args, save_model
+from utils import (Tokenizer, parse_args, save_model, print_device_info, 
+                    print_training_header, print_training_progress, print_model_saved, 
+                    print_inference_header, print_tokenizer_data_info, print_optimizer_info)
 
 # imports from other files
 from config import Config
@@ -18,48 +20,48 @@ from optimizer import create_optimizer
 
 
 def inference(inference_config, inference_model, text="They fear us"):
+    print_inference_header()
+    
     tokenizer = Tokenizer.get_tokenizer(inference_config.tokenizer)
     tokens = tokenizer.encode(text)
     x = torch.tensor(tokens)
     x = x.unsqueeze(0)
 
-    print("*"*50)
-
     # Move input tensor to the same device as the model
     if inference_model:
-        print("using passed in model for inference")
         device = next(inference_model.parameters()).device
-
     else:
         inference_model = Transformer(inference_config)
-        print("using random model for inference")
         device = inference_config.device
 
     x = x.to(device)
     out = inference_model(x)
     pred_tokens = out.argmax(dim=-1)
-    print(f"predicted tokens: {pred_tokens}")
 
-    # Only take the prediction from the last position (next token after "fox")
+    # Get next token prediction
     next_token = pred_tokens[0, -1].item()
     predicted_word = tokenizer.decode([next_token])
-    print(f"predicted word: {predicted_word}")
-
-    print(f"full sentence: {text}{predicted_word}")
-
-    print("*"*50)
-    print("sanity check: all predicted tokens")
-    for num, token in enumerate(pred_tokens.flatten()):
-        decoded = tokenizer.decode([token.item()])
-
-        if num == (len(pred_tokens.flatten()) - 1):
-            print(f"** Token {token} -> '{decoded}' **")
-        else:
-            print(f"Token {token} -> '{decoded}'")
+    
+    print(f"Input: \"{text}\"")
+    print(f"Predicted: \"{predicted_word}\" (token: {next_token})")
+    print(f"Result: \"{text}{predicted_word}\"")
+    
+    # Smart analysis of prediction quality
+    unique_tokens = len(set(pred_tokens.flatten().tolist()))
+    total_tokens = len(pred_tokens.flatten())
+    
+    if unique_tokens == 1:
+        print(f"\nNote: Model is stuck on token {pred_tokens[0, 0].item()} - likely undertrained")
+    elif unique_tokens < total_tokens * 0.3:
+        print(f"\nNote: Low token diversity ({unique_tokens}/{total_tokens} unique) - may need more training")
+    else:
+        print(f"\nModel shows good token diversity ({unique_tokens}/{total_tokens} unique tokens)")
 
 def training(model_config):
     device = model_config.device
-    print(f"Using device: {device}")
+    
+    # Print device info
+    print_device_info(device)
 
     torch.manual_seed(42)
 
@@ -96,12 +98,33 @@ def training(model_config):
         )
 
     train_loader = DataLoader(model_config.batch_size, model_config.context_len, model_config.tokenizer, device)
+    
+    # Print clean tokenizer and data info
+    print_tokenizer_data_info(
+        model_config.tokenizer, 
+        model_config.vocab_size,
+        train_loader.total_tokens,
+        model_config.batch_size,
+        model_config.context_len,
+        train_loader.max_sequences
+    )
 
     model = Transformer(model_config).to(device)
     # model = torch.compile(model) # temporary comment to resolve errors with metal
 
     # Create optimizer based on config
     optimizer = create_optimizer(model, model_config)
+    
+    # Print clean optimizer info
+    if hasattr(model_config, '_optimizer_info'):
+        info = model_config._optimizer_info
+        print_optimizer_info(
+            info['type'],
+            info.get('muon_params'),
+            info.get('adamw_params'),
+            info.get('muon_lr'),
+            info.get('adamw_lr')
+        )
     
     # Track global training time
     global_start_time = time.time()
@@ -111,12 +134,18 @@ def training(model_config):
     max_steps = model_config.max_steps
     final_loss = None  # Track final loss for saving
 
+    # Calculate total steps for all epochs
+    num_batches = int(len(train_loader.tokens) / (train_loader.batch_size * train_loader.seq_len))
+    effective_batches = num_batches // model_config.accumulation_steps
+    total_planned_steps = effective_batches * model_config.epochs
+    
+    # Print training header with theoretical start loss
+    print_training_header(model_config.epochs, total_planned_steps)
+    print(f"Theoretical Start Loss: {np.log(model_config.vocab_size):.3f}")
+
     for epoch in range(model_config.epochs):
-        print(f"Epoch {epoch + 1}/{model_config.epochs}")
-
-        num_batches = int(len(train_loader.tokens) / (train_loader.batch_size * train_loader.seq_len))
-        effective_batches = num_batches // model_config.accumulation_steps
-
+        print(f"\nEpoch {epoch + 1}/{model_config.epochs}")
+        
         for effective_batch in range(effective_batches):
             # Check if we've reached the step limit
             if max_steps is not None and total_steps >= max_steps:
@@ -198,8 +227,11 @@ def training(model_config):
 
                 wandb.log(wandb_metrics)
 
-            if effective_batch % 10 == 0 or effective_batch + 1 == effective_batches:
-                print(f"Eff. Batch {effective_batch+1}/{effective_batches}, Loss: {loss_accum:.4f}, Grad Norm: {grad_norm.item():.4f}, LR: {lr_display}, Time/Step: {time_per_step:.3f}s, Tok/s: {tokens_per_sec:.0f}")
+            # Clean progress reporting
+            if total_steps % 2 == 0 or effective_batch + 1 == effective_batches:
+                print_training_progress(total_steps, total_planned_steps, loss_accum, 
+                                      grad_norm.item(), tokens_per_sec, lr_display, time_per_step,
+                                      is_final=(effective_batch + 1 == effective_batches))
         
         # Break out of epoch loop if we've reached steps limit
         if max_steps is not None and total_steps >= max_steps:
@@ -207,7 +239,8 @@ def training(model_config):
 
     # Save final model after training completion (if enabled)
     if model_config.save_model and final_loss is not None:  # Only save if enabled and we completed at least one step
-        save_model(model, model_config, total_steps, final_loss, "final")
+        save_path = save_model(model, model_config, total_steps, final_loss, "final")
+        print_model_saved(save_path)
 
     if model_config.wandb_enabled:
         wandb.finish()
@@ -222,7 +255,6 @@ if __name__ == "__main__":
     # Create config with defaults, then apply command line overrides
     config = Config(wandb_enabled=True, **config_overrides)
     config.display_config(extended=True)
-    print(f"theoretical start loss: {np.log(config.vocab_size)}")
 
     train = True
     if train:

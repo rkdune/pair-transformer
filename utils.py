@@ -5,6 +5,90 @@ import json
 import os
 from datetime import datetime
 
+def print_section_header(title, emoji=""):
+    """Print a clean section header with consistent formatting."""
+    separator = "═" * 63
+    header = f"{emoji} {title}" if emoji else title
+    print(f"\n{separator}")
+    print(f"{header}")
+    print(f"{separator}")
+
+def format_number(num):
+    """Format numbers with commas for readability."""
+    if isinstance(num, (int, float)):
+        return f"{num:,}"
+    return str(num)
+
+def print_device_info(device):
+    """Print clean device and environment information."""
+    print_section_header("DEVICE & ENVIRONMENT", "🔧")
+    print(f"Device: {device}")
+    cuda_available = "Yes" if torch.cuda.is_available() else "No"
+    mps_available = "Yes" if torch.backends.mps.is_available() else "No"
+    print(f"CUDA Available: {cuda_available}")
+    print(f"MPS Available: {mps_available}")
+
+def print_model_params(config):
+    """Print clean model parameter information.""" 
+    print_section_header("MODEL PARAMETERS", "📊")
+    print(f"Architecture: Transformer")
+    print(f"Transformer Blocks: {config.num_blocks}")
+    print(f"Attention Heads: {config.num_heads}")
+    print(f"Embedding Dim: {config.embedding_dim}")
+    print(f"Context Length: {format_number(config.context_len)}")
+    print(f"Vocab Size: {format_number(config.vocab_size)}")
+    
+    # Show detailed parameter breakdown
+    print(f"\nParameter Breakdown:")
+    for param_type, count in config.learnable_params_dict.items():
+        print(f"  {param_type}: {format_number(count)}")
+    
+    print(f"\nLearnable Parameters: {format_number(config.learnable_params)}")
+    print(f"Non-learnable Parameters: {format_number(config.non_learnable_params)}")
+    print(f"Total Parameters: {format_number(config.learnable_params + config.non_learnable_params)}")
+
+def print_tokenizer_data_info(tokenizer_name, vocab_size, total_tokens, batch_size, seq_len, max_sequences):
+    """Print clean tokenizer and data information."""
+    print_section_header("TOKENIZER & DATA", "🔤")
+    print(f"Tokenizer: {tokenizer_name} (vocab_size: {format_number(vocab_size)})")
+    print(f"Dataset: {format_number(total_tokens)} tokens loaded")
+    print(f"Batch Configuration: {batch_size} sequences × {seq_len} tokens")
+    print(f"Max Sequences/Epoch: {format_number(max_sequences)}")
+
+def print_optimizer_info(optimizer_type, muon_params=None, adamw_params=None, muon_lr=None, adamw_lr=None):
+    """Print clean optimizer information."""
+    print_section_header("OPTIMIZER", "⚡")
+    if muon_params and adamw_params:
+        print(f"Type: Hybrid (Muon + AdamW)")
+        print(f"Muon Parameters: {format_number(muon_params)} (hidden layers)")
+        print(f"AdamW Parameters: {format_number(adamw_params)} (other)")
+        print(f"Learning Rates: Muon={muon_lr:.6f}, AdamW={adamw_lr:.6f}")
+    else:
+        print(f"Type: {optimizer_type}")
+        if adamw_lr:
+            print(f"Learning Rate: {adamw_lr:.6f}")
+
+def print_training_header(epochs, total_steps=None):
+    """Print training section header."""
+    print_section_header("TRAINING", "🚀")
+    if total_steps:
+        print(f"Training: {epochs} epoch(s), {total_steps} steps total")
+    else:
+        print(f"Training: {epochs} epoch(s)")
+
+def print_training_progress(step, total_steps, loss, grad_norm, tok_per_sec, lr_display, time_per_step, is_final=False):
+    """Print clean training progress with detailed learning rate info."""
+    prefix = "Final" if is_final else f"Step {step}"
+    print(f"{prefix}: Loss={loss:.3f}, Grad={grad_norm:.3f}, LR={lr_display}, Time/Step={time_per_step:.3f}s, Tok/s={tok_per_sec:,.0f}")
+
+def print_model_saved(save_path):
+    """Print clean model saved message."""
+    print(f"\n💾 Model saved: {save_path}")
+
+def print_inference_header():
+    """Print inference section header."""
+    print_section_header("INFERENCE & VALIDATION", "🎯")
+
 class Tokenizer:
     _tokenizers = {}
     
@@ -32,7 +116,7 @@ class Tokenizer:
             tokenizer_name = "gpt2"
         
         if tokenizer_name not in cls._tokenizers:
-            print(f"!! loading tokenizer {tokenizer_name} (vocab size {cls.TOKENIZER_CONFIGS[tokenizer_name]['vocab_size']}) !!")
+            # print(f"!! loading tokenizer {tokenizer_name} (vocab size {cls.TOKENIZER_CONFIGS[tokenizer_name]['vocab_size']}) !!")
             cls._tokenizers[tokenizer_name] = tiktoken.get_encoding(tokenizer_name)
         
         return cls._tokenizers[tokenizer_name]

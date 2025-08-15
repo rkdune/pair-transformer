@@ -85,13 +85,7 @@ class Config():
         self.effective_batch_size = self.batch_size * self.accumulation_steps
 
     def display_config(self, extended=True):
-        if extended:
-            print(f"learnable params dict: {self.learnable_params_dict}")
-            print(f"total # of learnable params: {self.learnable_params:,}")
-            print(f"non-learnable params dict: {self.non_learnable_params_dict}")
-            print(f"total # of non-learnable params: {self.non_learnable_params:,}")
-            print(f"** total # of params: {(self.learnable_params + self.non_learnable_params):,} **")
-            print("*"*50)
-        else:
-            print(f"learnable params: {self.learnable_params:,}, non-learnable params: {self.non_learnable_params:,}, total params: {self.learnable_params + self.non_learnable_params:,}")
+        # This method is now deprecated - use print_model_params() from utils instead
+        from utils import print_model_params
+        print_model_params(self)
 
