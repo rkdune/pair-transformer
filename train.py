@@ -8,7 +8,7 @@ import time
 from dotenv import load_dotenv
 load_dotenv()
 
-from utils import Tokenizer, parse_args
+from utils import Tokenizer, parse_args, save_model
 
 # imports from other files
 from config import Config
@@ -109,6 +109,7 @@ def training(model_config):
     # Track total steps for steps limit
     total_steps = 0
     max_steps = model_config.max_steps
+    final_loss = None  # Track final loss for saving
 
     for epoch in range(model_config.epochs):
         print(f"Epoch {epoch + 1}/{model_config.epochs}")
@@ -120,6 +121,9 @@ def training(model_config):
             # Check if we've reached the step limit
             if max_steps is not None and total_steps >= max_steps:
                 print(f"Reached maximum steps limit of {max_steps}. Stopping training.")
+                # Save model before early stopping (if enabled)
+                if model_config.save_model:
+                    save_model(model, model_config, total_steps, final_loss, "max_steps_reached")
                 break
             optimizer.zero_grad()
             loss_accum = 0.0
@@ -142,8 +146,14 @@ def training(model_config):
             grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), float('inf'))
             optimizer.step()
             
-            # Increment step counter
+            # Increment step counter and update final loss
             total_steps += 1
+            final_loss = loss_accum
+            
+            # Periodic saving if enabled
+            if (model_config.save_model and model_config.save_every is not None and 
+                total_steps % model_config.save_every == 0):
+                save_model(model, model_config, total_steps, final_loss, f"step_{total_steps}")
 
             batch_end_time = time.time()
             time_per_step = batch_end_time - batch_start_time
@@ -194,6 +204,10 @@ def training(model_config):
         # Break out of epoch loop if we've reached steps limit
         if max_steps is not None and total_steps >= max_steps:
             break
+
+    # Save final model after training completion (if enabled)
+    if model_config.save_model and final_loss is not None:  # Only save if enabled and we completed at least one step
+        save_model(model, model_config, total_steps, final_loss, "final")
 
     if model_config.wandb_enabled:
         wandb.finish()

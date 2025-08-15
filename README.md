@@ -88,5 +88,6 @@ WANDB_ENTITY=your_entity_name
 - [x] vectorized batch loading
 - [x] multi tokenizer support
 - [x] max steps flag
-- [ ] model saving
+- [x] model saving
+- [ ] organized console logs
 - [ ] data loader chunking

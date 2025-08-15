@@ -24,6 +24,11 @@ class Config():
     wandb_enabled = True
     print_per_layer_params = False
     run = None  # wandb run name
+    
+    # MODEL SAVING
+    save_model = False  # Enable model saving (must be explicitly set to True)
+    save_model_dir = "models"  # Directory to save models
+    save_every = None  # If set, save model every N steps
 
     # Inference
     temperature = 1.0
