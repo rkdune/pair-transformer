@@ -92,7 +92,15 @@ def training(model_config):
             }
         )
 
-    train_loader = DataLoader(model_config.batch_size, model_config.context_len, model_config.tokenizer, device)
+    train_loader = DataLoader(
+        model_config.batch_size, 
+        model_config.context_len, 
+        model_config.tokenizer, 
+        device,
+        data_source=model_config.data_source,
+        data_dir=model_config.data_dir,
+        use_validation=model_config.use_validation
+    )
     
     # Get data statistics
     data_stats = train_loader.get_stats()
@@ -257,7 +265,10 @@ if __name__ == "__main__":
     config_overrides = parse_args()
 
     # Create config with defaults, then apply command line overrides
-    config = Config(wandb_enabled=True, **config_overrides)
+    # Set default wandb_enabled if not specified in overrides
+    if 'wandb_enabled' not in config_overrides:
+        config_overrides['wandb_enabled'] = True
+    config = Config(**config_overrides)
     config.display_config(extended=True)
 
     train = True

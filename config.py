@@ -42,6 +42,11 @@ class Config():
     # Tokenizer
     tokenizer = "o200k_base"
 
+    # Data Source Configuration
+    data_source = "fineweb"  # "tiny_shakespeare" or "fineweb"
+    data_dir = "/data/dedalus-research/fineweb-edu-10B"
+    use_validation = False  # Whether to use validation set
+
     def __init__(self, **kwargs):
         # Set all class attributes as instance attributes first
         for key in dir(self.__class__):

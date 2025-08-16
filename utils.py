@@ -96,7 +96,7 @@ class Tokenizer:
     
     TOKENIZER_CONFIGS = {
         "gpt2": {"vocab_size": 50257},
-        "o200k_base": {"vocab_size": 199997}
+        "o200k_base": {"vocab_size": 200019}
     }
     
     @classmethod

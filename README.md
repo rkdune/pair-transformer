@@ -113,9 +113,8 @@ WANDB_ENTITY=your_entity_name
 - [x] organized console logs
 - [x] data loader chunking
 - [x] high precision matmul
+- [x] create ~20 different inference test cases other than napoleon
 - [ ] calculate mfu 
     - compute as actual tokens/sec divided by theoretical peak tokens/sec, where theoretical peak tokens/sec is (GPU count × theoretical peak FLOPS per GPU) divided by 6N + 12LHQT
     - DGX B200 spec sheet, for entire 8x system the theoretical peak FLOPS is 72petaFLOPS at FP8, and 144 petaFLOPS at FP4 precision.
     - 6N + 12LHQT from chinchilla paper.
-        - N is 
-- [ ] create ~20 different inference test cases other than napoleon
