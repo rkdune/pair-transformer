@@ -43,8 +43,8 @@ class Config():
     tokenizer = "o200k_base"
 
     # Data Source Configuration
-    data_source = "fineweb"  # "tiny_shakespeare" or "fineweb"
-    data_dir = "/data/dedalus-research/fineweb-edu-10B"
+    data_source = "fineweb 100B"  # "tiny_shakespeare" or "fineweb 10B" or "fineweb 100B"
+    data_dir = "/data/dedalus-research/fineweb-edu-100B"
     use_validation = False  # Whether to use validation set
 
     def __init__(self, **kwargs):
@@ -97,3 +97,5 @@ class Config():
         from utils import print_model_params
         print_model_params(self)
 
+config = Config()
+config.display_config(extended=True)

@@ -24,7 +24,8 @@ def inference(inference_config, inference_model, test_cases=inference_test_cases
     
     tokenizer = Tokenizer.get_tokenizer(inference_config.tokenizer)
 
-    for text in test_cases:
+    # For first 3 test cases, generate 100 tokens
+    for i, text in enumerate(test_cases):
         tokens = tokenizer.encode(text)
         x = torch.tensor(tokens)
         x = x.unsqueeze(0)
@@ -37,19 +38,42 @@ def inference(inference_config, inference_model, test_cases=inference_test_cases
             device = inference_config.device
 
         x = x.to(device)
-        out = inference_model(x)
-        pred_tokens = out.argmax(dim=-1)
+        
+        if i < 3:  # First 3 test cases: generate 100 tokens
+            print(f"\nGenerating 100 tokens for: \"{text}\"")
+            generated_text = text
+            current_input = x.clone()
+            
+            for _ in range(100):
+                # Forward pass
+                with torch.no_grad():
+                    out = inference_model(current_input)
+                    next_token = out[0, -1].argmax().item()
+                
+                # Decode and append
+                next_word = tokenizer.decode([next_token])
+                generated_text += next_word
+                
+                # Update input for next iteration (sliding window)
+                next_token_tensor = torch.tensor([[next_token]], device=device)
+                current_input = torch.cat([current_input, next_token_tensor], dim=1)
+                
+                # Keep only the last context_len tokens to respect context window
+                if current_input.size(1) > inference_config.context_len:
+                    current_input = current_input[:, -inference_config.context_len:]
+            
+            print(f"\033[1m{generated_text}\033[0m\n")
+            
+        else:  # Remaining test cases: single token prediction
+            with torch.no_grad():
+                out = inference_model(x)
+                pred_tokens = out.argmax(dim=-1)
 
-        # Get next token prediction
-        next_token = pred_tokens[0, -1].item()
-        predicted_word = tokenizer.decode([next_token])
-        
-        print(f"{text}\033[1m{predicted_word}\033[0m")
-        
-        # Smart analysis of prediction quality
-        # unique_tokens = len(set(pred_tokens.flatten().tolist()))
-        # total_tokens = len(pred _tokens.flatten())
-        #print(f"token diversity: {unique_tokens}/{total_tokens} unique tokens")
+            # Get next token prediction
+            next_token = pred_tokens[0, -1].item()
+            predicted_word = tokenizer.decode([next_token])
+            
+            print(f"{text}\033[1m{predicted_word}\033[0m")
 
 def training(model_config):
     
@@ -117,7 +141,8 @@ def training(model_config):
     # Apply torch.compile if enabled (default: True)
     if model_config.torch_compile:
         print("🚀 Compiling model with torch.compile for faster training...")
-        model = torch.compile(model)
+        model = torch.compile(model, mode="reduce-overhead")
+        # print("skipping torch compile for now")
     else:
         print("⚠️  torch.compile disabled - training will be slower")
 
@@ -237,7 +262,7 @@ def training(model_config):
                 wandb.log(wandb_metrics)
 
             # Clean progress reporting
-            if total_steps % 2 == 0 or effective_batch + 1 == effective_batches_per_epoch:
+            if total_steps % 100 == 0 or total_steps == 1 or effective_batch + 1 == effective_batches_per_epoch:
                 print_training_progress(total_steps, total_planned_steps, loss_accum, 
                                       grad_norm.item(), tokens_per_sec, lr_display, time_per_step,
                                       is_final=(effective_batch + 1 == effective_batches_per_epoch))
@@ -258,8 +283,11 @@ def training(model_config):
 
 
 if __name__ == "__main__":
-
+    os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3,4,5,6"
     torch.set_float32_matmul_precision("high")
+    
+    # Configure CUDAGraph to skip dynamic shapes for better performance
+    torch._inductor.config.triton.cudagraph_skip_dynamic_graphs = True
 
     # Parse command line arguments
     config_overrides = parse_args()
@@ -268,6 +296,8 @@ if __name__ == "__main__":
     # Set default wandb_enabled if not specified in overrides
     if 'wandb_enabled' not in config_overrides:
         config_overrides['wandb_enabled'] = True
+        config_overrides['run'] = "slurm testing"
+        config_overrides['max_steps'] = 1000
     config = Config(**config_overrides)
     config.display_config(extended=True)
 

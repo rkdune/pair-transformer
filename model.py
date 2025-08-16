@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import einops
 import math
 
@@ -62,40 +63,37 @@ class Attention(nn.Module):
         K = einops.rearrange(self.W_K(x), 'batch seq (head dim) -> batch head seq dim', head=self.num_heads)
         V = einops.rearrange(self.W_V(x), 'batch seq (head dim) -> batch head seq dim', head=self.num_heads)
 
-        # Calculate attention scores
+        # Create causal mask for flash attention
+        causal_mask = torch.tril(torch.ones(T, T, device=x.device, dtype=torch.bool))
+        
+        # Use Flash Attention via scaled_dot_product_attention
+        attn_output = F.scaled_dot_product_attention(
+            Q, K, V, 
+            attn_mask=causal_mask, 
+            dropout_p=0.0,
+            is_causal=True
+        )
+        
+        # Apply attention sink after flash attention
+        # For sink implementation, we need to manually handle it since flash attention doesn't support custom sinks
+        # Calculate attention scores for sink computation
         scores = (Q @ K.transpose(-2, -1)) / self.scale
+        scores = scores.masked_fill(~causal_mask, float('-inf'))
         
-        # Apply causal mask
-        scores = scores.masked_fill(self.causal_mask[:T, :T] == 0, float('-inf'))
-
-        # Expand attention sink scalar for each head to match attention scores shape
-        # einops.repeat takes the sink_scalar tensor (shape: [num_heads]) and repeats it
-        # to create a new tensor with shape [batch, num_heads, seq_len, 1]
-        # The 'head -> batch head seq 1' pattern means:
-        # - Take the original 'head' dimension
-        # - Add new 'batch', 'head', 'seq', and singleton dimensions
-        # - batch=B and seq=T specify the sizes for the new dimensions
+        # Expand attention sink scalar
         sink_expanded = einops.repeat(self.sink_scalar, 'head -> batch head seq 1', batch=B, seq=T)
-        scores_with_sink = torch.cat([sink_expanded, scores], dim = -1)
+        scores_with_sink = torch.cat([sink_expanded, scores], dim=-1)
         
-        # Apply softmax (now includes sink as first element)
+        # Apply softmax to get sink probabilities
         attention_probs = torch.softmax(scores_with_sink, dim=-1)
-
-        # Split off sink probability and keep token-to-token attention
-        sink_prob, QK = attention_probs[..., :1], attention_probs[..., 1:]
+        sink_prob, token_probs = attention_probs[..., :1], attention_probs[..., 1:]
         
-        # Sanity check: verify shapes and attention sum
-        # if hasattr(self, '_debug_counter'):
-        #     self._debug_counter += 1
-        # else:
-        #     self._debug_counter = 1
-            
-        # if self._debug_counter <= 1:  # Only print first forward pass
-        #     print(f"Attention shapes - scores: {scores.shape}, sink_expanded: {sink_expanded.shape}")
-        #     print(f"Combined shape: {scores_with_sink.shape}, attention_probs sum: {attention_probs.sum(dim=-1)[0,0,0]:.6f}")
-        #     print(f"Sink prob range: [{sink_prob.min():.4f}, {sink_prob.max():.4f}]")
-
-        QKV = einops.rearrange(QK @ V, 'batch head seq dim -> batch seq (head dim)', head=self.num_heads)
+        # Blend flash attention output with sink mechanism
+        # Use token probabilities to weight the flash attention output
+        token_prob_sum = token_probs.sum(dim=-1, keepdim=True)  # [B, H, T, 1]
+        weighted_attn = attn_output * token_prob_sum
+        
+        QKV = einops.rearrange(weighted_attn, 'batch head seq dim -> batch seq (head dim)', head=self.num_heads)
         QKV_Out = self.W_out(QKV)
 
         return QKV_Out

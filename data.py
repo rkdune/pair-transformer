@@ -4,7 +4,7 @@ import glob
 from utils import Tokenizer
 
 class DataLoader:
-    def __init__(self, B, T, config_tokenizer, device='cpu', data_source="fineweb", data_dir=None, use_validation=False):
+    def __init__(self, B, T, config_tokenizer, device='cpu', data_source="fineweb 10B", data_dir=None, use_validation=False):
         self.batch_size = B  # num of sequences processed together in each batch
         self.seq_len = T     # how many tokens are in each sequence
         self.device = device
@@ -16,26 +16,32 @@ class DataLoader:
             tokenizer = Tokenizer.get_tokenizer(config_tokenizer)
             encoding = tokenizer.encode(text)
             all_tokens = torch.tensor(encoding, dtype=torch.long).to(device)
-            print("Using tiny_shakespeare dataset")
+            print(f"Using {data_source} dataset")
         
-        elif data_source == "fineweb":
+        elif data_source == "fineweb 10B" or data_source == "fineweb 100B":
             if data_dir is None:
-                raise ValueError("data_dir must be specified when using fineweb data source")
+                    raise ValueError("data_dir must be specified when not using tinyshakespeare")
             
+            if data_source == "fineweb 10B":
+                search_pattern = ["fineweb-edu_train_*.pt", "fineweb-edu_val_*.pt"]
+                
+            elif data_source == "fineweb 100B":
+                search_pattern = ["fineweb-edu-100B_train_*.pt", "fineweb-edu-100B_val_*.pt"]
+        
             # Discover available files
             if use_validation:
-                file_pattern = os.path.join(data_dir, "fineweb-edu_val_*.pt")
+                file_pattern = os.path.join(data_dir, search_pattern[1])
                 data_files = sorted(glob.glob(file_pattern))
                 if not data_files:
                     raise FileNotFoundError(f"No validation files found in {data_dir}")
-                print(f"Using fineweb validation set: {len(data_files)} files")
+                print(f"Using {data_source} validation set: {len(data_files)} files")
             else:
-                file_pattern = os.path.join(data_dir, "fineweb-edu_train_*.pt")
+                file_pattern = os.path.join(data_dir, search_pattern[0])
                 data_files = sorted(glob.glob(file_pattern))
                 if not data_files:
                     raise FileNotFoundError(f"No training files found in {data_dir}")
-                print(f"Using fineweb training set: {len(data_files)} files")
-            
+                print(f"Using {data_source} training set: {len(data_files)} files")
+
             self.data_files = data_files
             self.current_file_idx = 0
             
@@ -49,9 +55,9 @@ class DataLoader:
             all_tokens = all_tokens.to(device)
             
             print(f"Loaded {len(all_tokens):,} tokens from first file")
-            
+
         else:
-            raise ValueError(f"Unknown data_source: {data_source}. Must be 'tiny_shakespeare' or 'fineweb'")
+            raise ValueError(f"Unknown data_source: {data_source}. Must be 'tiny_shakespeare' or 'fineweb 10B' or 'fineweb 100B'")
 
         # Sequential chunking (no overlaps)
         self.total_tokens = len(all_tokens)
