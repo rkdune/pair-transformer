@@ -58,6 +58,7 @@ def inference(inference_config, inference_model, text="They fear us"):
         print(f"\nModel shows good token diversity ({unique_tokens}/{total_tokens} unique tokens)")
 
 def training(model_config):
+    
     device = model_config.device
     
     # Print device info
@@ -255,6 +256,9 @@ def training(model_config):
 
 
 if __name__ == "__main__":
+
+    torch.set_float32_matmul_precision("high")
+    
     # Parse command line arguments
     config_overrides = parse_args()
 

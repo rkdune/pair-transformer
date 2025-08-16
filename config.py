@@ -40,7 +40,7 @@ class Config():
     accumulation_steps = 1
 
     # Tokenizer
-    tokenizer = "gpt2"
+    tokenizer = "o200k_base"
 
     def __init__(self, **kwargs):
         # Set all class attributes as instance attributes first
