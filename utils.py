@@ -276,4 +276,25 @@ def load_model(model_path, device=None):
     
     return state_dict, metadata
 
-
+inference_test_cases = [
+    "Napoleon was born in the city of",
+    "The quick brown fox jumps over the",
+    "To be or not to be, that is the",
+    "In the beginning was the",
+    "The meaning of life is",
+    "Once upon a time in a",
+    "The capital of France is",
+    "Shakespeare wrote many plays including",
+    "The sun rises in the",
+    "Artificial intelligence will",
+    "The greatest invention of mankind is",
+    "Love is like a",
+    "The ocean is deep and",
+    "Music is the language of",
+    "Time flies when you're",
+    "The secret to happiness is",
+    "Winter is coming and",
+    "Knowledge is power, but",
+    "The moon shines bright in the",
+    "Dreams are the windows to"
+]

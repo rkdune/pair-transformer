@@ -10,7 +10,7 @@ load_dotenv()
 
 from utils import (Tokenizer, parse_args, save_model, print_device_info, 
                     print_training_header, print_training_progress, print_model_saved, 
-                    print_inference_header, print_tokenizer_data_info, print_optimizer_info)
+                    print_inference_header, print_tokenizer_data_info, print_optimizer_info, inference_test_cases)
 
 # imports from other files
 from config import Config
@@ -19,43 +19,37 @@ from model import Transformer
 from optimizer import create_optimizer
 
 
-def inference(inference_config, inference_model, text="They fear us"):
+def inference(inference_config, inference_model, test_cases=inference_test_cases):
     print_inference_header()
     
     tokenizer = Tokenizer.get_tokenizer(inference_config.tokenizer)
-    tokens = tokenizer.encode(text)
-    x = torch.tensor(tokens)
-    x = x.unsqueeze(0)
 
-    # Move input tensor to the same device as the model
-    if inference_model:
-        device = next(inference_model.parameters()).device
-    else:
-        inference_model = Transformer(inference_config)
-        device = inference_config.device
+    for text in test_cases:
+        tokens = tokenizer.encode(text)
+        x = torch.tensor(tokens)
+        x = x.unsqueeze(0)
 
-    x = x.to(device)
-    out = inference_model(x)
-    pred_tokens = out.argmax(dim=-1)
+        # Move input tensor to the same device as the model
+        if inference_model:
+            device = next(inference_model.parameters()).device
+        else:
+            inference_model = Transformer(inference_config)
+            device = inference_config.device
 
-    # Get next token prediction
-    next_token = pred_tokens[0, -1].item()
-    predicted_word = tokenizer.decode([next_token])
-    
-    print(f"Input: \"{text}\"")
-    print(f"Predicted: \"{predicted_word}\" (token: {next_token})")
-    print(f"Result: \"{text}{predicted_word}\"")
-    
-    # Smart analysis of prediction quality
-    unique_tokens = len(set(pred_tokens.flatten().tolist()))
-    total_tokens = len(pred_tokens.flatten())
-    
-    if unique_tokens == 1:
-        print(f"\nNote: Model is stuck on token {pred_tokens[0, 0].item()} - likely undertrained")
-    elif unique_tokens < total_tokens * 0.3:
-        print(f"\nNote: Low token diversity ({unique_tokens}/{total_tokens} unique) - may need more training")
-    else:
-        print(f"\nModel shows good token diversity ({unique_tokens}/{total_tokens} unique tokens)")
+        x = x.to(device)
+        out = inference_model(x)
+        pred_tokens = out.argmax(dim=-1)
+
+        # Get next token prediction
+        next_token = pred_tokens[0, -1].item()
+        predicted_word = tokenizer.decode([next_token])
+        
+        print(f"{text}\033[1m{predicted_word}\033[0m")
+        
+        # Smart analysis of prediction quality
+        # unique_tokens = len(set(pred_tokens.flatten().tolist()))
+        # total_tokens = len(pred _tokens.flatten())
+        #print(f"token diversity: {unique_tokens}/{total_tokens} unique tokens")
 
 def training(model_config):
     
@@ -258,7 +252,7 @@ def training(model_config):
 if __name__ == "__main__":
 
     torch.set_float32_matmul_precision("high")
-    
+
     # Parse command line arguments
     config_overrides = parse_args()
 
@@ -270,4 +264,4 @@ if __name__ == "__main__":
     if train:
         model = training(config)
 
-    inference(config, model, "Napoleon was born in the city of")
+    inference(config, model)
