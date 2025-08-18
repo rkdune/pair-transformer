@@ -26,7 +26,7 @@ class Config():
     run = None  # wandb run name
     
     # MODEL SAVING
-    save_model = False  # Enable model saving (must be explicitly set to True)
+    save_model = True  # Enable model saving (must be explicitly set to True)
     save_model_dir = "models"  # Directory to save models
     save_every = None  # If set, save model every N steps
 
@@ -46,6 +46,12 @@ class Config():
     data_source = "fineweb 100B"  # "tiny_shakespeare" or "fineweb 10B" or "fineweb 100B"
     data_dir = "/data/dedalus-research/fineweb-edu-100B"
     use_validation = False  # Whether to use validation set
+
+    # Distributed Training Configuration
+    distributed = True  # Enable distributed training (auto-detected from environment)
+    local_rank = None  # Auto-set from environment
+    world_size = None  # Auto-set from environment
+    backend = "nccl"  # Backend for distributed training (nccl for GPUs)
 
     def __init__(self, **kwargs):
         # Set all class attributes as instance attributes first
@@ -92,10 +98,26 @@ class Config():
         # gradient accumulation
         self.effective_batch_size = self.batch_size * self.accumulation_steps
 
+        # Distributed training auto-detection
+        import os
+        if 'LOCAL_RANK' in os.environ:
+            self.local_rank = int(os.environ['LOCAL_RANK'])
+            self.world_size = int(os.environ['WORLD_SIZE'])
+            self.distributed = True
+        else:
+            self.local_rank = 0
+            self.world_size = 1  
+            self.distributed = False
+
+        # Update effective batch size for distributed training
+        if self.distributed:
+            self.effective_batch_size = self.batch_size * self.accumulation_steps * self.world_size
+
     def display_config(self, extended=True):
         # This method is now deprecated - use print_model_params() from utils instead
         from utils import print_model_params
         print_model_params(self)
 
-config = Config()
-config.display_config(extended=True)
+# Test config instantiation - commented out to avoid duplicate output
+# config = Config() 
+# config.display_config(extended=True)

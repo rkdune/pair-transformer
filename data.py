@@ -1,13 +1,18 @@
 import torch
+import torch.distributed as dist
+from torch.utils.data.distributed import DistributedSampler
 import os
 import glob
 from utils import Tokenizer
 
 class DataLoader:
-    def __init__(self, B, T, config_tokenizer, device='cpu', data_source="fineweb 10B", data_dir=None, use_validation=False):
+    def __init__(self, B, T, config_tokenizer, device='cpu', data_source="fineweb 10B", data_dir=None, use_validation=False, distributed=False, rank=0, world_size=1):
         self.batch_size = B  # num of sequences processed together in each batch
         self.seq_len = T     # how many tokens are in each sequence
         self.device = device
+        self.distributed = distributed
+        self.rank = rank
+        self.world_size = world_size
 
         # Load data based on source
         if data_source == "tiny_shakespeare":
@@ -62,17 +67,50 @@ class DataLoader:
         # Sequential chunking (no overlaps)
         self.total_tokens = len(all_tokens)
         self.total_sequences = self.total_tokens // self.seq_len
-        self.batches_per_epoch = self.total_sequences // self.batch_size
         
-        # Only use tokens that fit into complete sequences
-        tokens_to_use = self.batches_per_epoch * self.batch_size * self.seq_len
-        self.tokens_utilized = tokens_to_use
-        self.utilization_rate = tokens_to_use / self.total_tokens
+        # Calculate total batches available from current file
+        total_file_batches = self.total_sequences // self.batch_size
         
-        # Chunk data into non-overlapping sequences
-        # Use only tokens that fit perfectly into batches (deterministic)
-        sequences_to_use = self.batches_per_epoch * self.batch_size
-        useful_tokens = all_tokens[:sequences_to_use * self.seq_len]
+        # For distributed training, each process gets a subset of batches
+        if self.distributed:
+            single_file_batches = total_file_batches // self.world_size
+        else:
+            single_file_batches = total_file_batches
+        
+        # For fineweb datasets, multiply by number of files to enable continuous training
+        if data_source == "fineweb 10B" or data_source == "fineweb 100B":
+            # This gives us a large batches_per_epoch that accounts for all files
+            self.batches_per_epoch = len(self.data_files) * single_file_batches
+        else:
+            self.batches_per_epoch = single_file_batches
+        
+        # For distributed training, calculate sequences per rank directly to avoid precision loss
+        if self.distributed:
+            # Single source of truth: divide total sequences among ranks
+            sequences_per_rank = self.total_sequences // self.world_size
+            
+            # Ensure sequences fit perfectly into batches
+            single_file_batches = sequences_per_rank // self.batch_size
+            sequences_to_use = single_file_batches * self.batch_size
+            
+            # Extract this rank's contiguous chunk based on actual sequences to use
+            start_sequence_idx = self.rank * sequences_to_use
+            end_sequence_idx = start_sequence_idx + sequences_to_use
+            start_token_idx = start_sequence_idx * self.seq_len
+            end_token_idx = end_sequence_idx * self.seq_len
+            
+            useful_tokens = all_tokens[start_token_idx:end_token_idx]
+        else:
+            # Single GPU: use all available data
+            single_file_batches = total_file_batches
+            sequences_to_use = single_file_batches * self.batch_size
+            useful_tokens = all_tokens[:sequences_to_use * self.seq_len]
+        
+        # Calculate utilization stats based on actual data used
+        self.tokens_utilized = len(useful_tokens)
+        self.utilization_rate = self.tokens_utilized / self.total_tokens
+        
+        # Reshape into sequences
         self.sequences = useful_tokens.view(sequences_to_use, self.seq_len)
         
         # Create input (x) and target (y) sequences
@@ -82,8 +120,11 @@ class DataLoader:
         self.y_sequences = self.sequences[:, 1:]   # Remove first token from each sequence
         
         # Reshape into batches: [num_batches, batch_size, seq_len-1]
-        self.x_batches = self.x_sequences.view(self.batches_per_epoch, self.batch_size, self.seq_len - 1)
-        self.y_batches = self.y_sequences.view(self.batches_per_epoch, self.batch_size, self.seq_len - 1)
+        self.x_batches = self.x_sequences.view(single_file_batches, self.batch_size, self.seq_len - 1)
+        self.y_batches = self.y_sequences.view(single_file_batches, self.batch_size, self.seq_len - 1)
+        
+        # Store single file batches for comparison
+        self.single_file_batches = single_file_batches
         
         self.current_batch = 0
         self.data_source = data_source
@@ -93,7 +134,7 @@ class DataLoader:
 
     def _load_next_file(self):
         """Load the next file in the sequence for fineweb data."""
-        if self.data_source != "fineweb" or not hasattr(self, 'data_files'):
+        if not (self.data_source == "fineweb 10B" or self.data_source == "fineweb 100B") or not hasattr(self, 'data_files'):
             return False
         
         # Move to next file
@@ -111,31 +152,59 @@ class DataLoader:
         self.current_tokens = new_tokens
         self.total_tokens = len(new_tokens)
         self.total_sequences = self.total_tokens // self.seq_len
-        self.batches_per_epoch = self.total_sequences // self.batch_size
         
-        # Recreate sequences and batches
-        tokens_to_use = self.batches_per_epoch * self.batch_size * self.seq_len
-        self.tokens_utilized = tokens_to_use
-        self.utilization_rate = tokens_to_use / self.total_tokens
+        # Calculate batches for this file
+        total_file_batches = self.total_sequences // self.batch_size
         
-        sequences_to_use = self.batches_per_epoch * self.batch_size
-        useful_tokens = new_tokens[:sequences_to_use * self.seq_len]
+        if self.distributed:
+            self.single_file_batches = total_file_batches // self.world_size
+        else:
+            self.single_file_batches = total_file_batches
+        
+        # For distributed training, calculate sequences per rank directly to avoid precision loss
+        if self.distributed:
+            # Single source of truth: divide total sequences among ranks
+            sequences_per_rank = self.total_sequences // self.world_size
+            
+            # Ensure sequences fit perfectly into batches
+            self.single_file_batches = sequences_per_rank // self.batch_size
+            sequences_to_use = self.single_file_batches * self.batch_size
+            
+            # Extract this rank's contiguous chunk based on actual sequences to use
+            start_sequence_idx = self.rank * sequences_to_use
+            end_sequence_idx = start_sequence_idx + sequences_to_use
+            start_token_idx = start_sequence_idx * self.seq_len
+            end_token_idx = end_sequence_idx * self.seq_len
+            
+            useful_tokens = new_tokens[start_token_idx:end_token_idx]
+        else:
+            # Single GPU: use all available data
+            self.single_file_batches = total_file_batches
+            sequences_to_use = self.single_file_batches * self.batch_size
+            useful_tokens = new_tokens[:sequences_to_use * self.seq_len]
+        
+        # Calculate utilization stats based on actual data used
+        self.tokens_utilized = len(useful_tokens)
+        self.utilization_rate = self.tokens_utilized / self.total_tokens
+        
+        # Reshape into sequences
         self.sequences = useful_tokens.view(sequences_to_use, self.seq_len)
         
         self.x_sequences = self.sequences[:, :-1]
         self.y_sequences = self.sequences[:, 1:]
         
-        self.x_batches = self.x_sequences.view(self.batches_per_epoch, self.batch_size, self.seq_len - 1)
-        self.y_batches = self.y_sequences.view(self.batches_per_epoch, self.batch_size, self.seq_len - 1)
+        self.x_batches = self.x_sequences.view(self.single_file_batches, self.batch_size, self.seq_len - 1)
+        self.y_batches = self.y_sequences.view(self.single_file_batches, self.batch_size, self.seq_len - 1)
         
-        print(f"Loaded {len(new_tokens):,} tokens, {self.batches_per_epoch} batches available")
+        print(f"Loaded {len(new_tokens):,} tokens, {self.single_file_batches} batches available")
         return True
 
     def next_batch(self):
         """Return next batch of sequences in deterministic order."""
-        if self.current_batch >= self.batches_per_epoch:
+        # Check if we need to load next file (based on single file batches)
+        if self.current_batch >= self.single_file_batches:
             # For fineweb, try to load next file; for tiny_shakespeare, reset
-            if self.data_source == "fineweb":
+            if self.data_source == "fineweb 10B" or self.data_source == "fineweb 100B":
                 if self._load_next_file():
                     self.current_batch = 0  # Reset to start of new file
                 else:
@@ -164,7 +233,7 @@ class DataLoader:
         }
         
         # Add fineweb-specific stats
-        if self.data_source == "fineweb" and hasattr(self, 'data_files'):
+        if (self.data_source == "fineweb 10B" or self.data_source == "fineweb 100B") and hasattr(self, 'data_files'):
             stats.update({
                 'total_files': len(self.data_files),
                 'current_file': self.current_file_idx + 1,

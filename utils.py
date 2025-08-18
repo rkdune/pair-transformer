@@ -1,6 +1,7 @@
 import tiktoken
 import argparse
 import torch
+import torch.distributed as dist
 import json
 import os
 from datetime import datetime
@@ -19,7 +20,7 @@ def format_number(num):
         return f"{num:,}"
     return str(num)
 
-def print_device_info(device):
+def print_device_info(device, config=None):
     """Print clean device and environment information."""
     print_section_header("DEVICE & ENVIRONMENT", "🔧")
     print(f"Device: {device}")
@@ -27,6 +28,15 @@ def print_device_info(device):
     mps_available = "Yes" if torch.backends.mps.is_available() else "No"
     print(f"CUDA Available: {cuda_available}")
     print(f"MPS Available: {mps_available}")
+    
+    # Add distributed training info
+    if config and config.distributed:
+        print(f"Distributed Training: Enabled")
+        print(f"World Size: {config.world_size}")
+        print(f"Local Rank: {config.local_rank}")
+        print(f"Backend: {config.backend}")
+    else:
+        print(f"Distributed Training: Disabled")
 
 def print_model_params(config):
     """Print clean model parameter information.""" 
@@ -275,6 +285,79 @@ def load_model(model_path, device=None):
     print(f"  - Tokenizer: {metadata['training_config']['tokenizer']}")
     
     return state_dict, metadata
+
+def setup_distributed(config):
+    """
+    Initialize distributed training process group.
+    
+    Args:
+        config: Config object with distributed training parameters
+        
+    Returns:
+        None
+    """
+    if not config.distributed:
+        return
+    
+    if config.local_rank is None or config.world_size is None:
+        raise ValueError("local_rank and world_size must be set for distributed training")
+    
+    # Set CUDA device for this process
+    torch.cuda.set_device(config.local_rank)
+    
+    # Initialize the process group
+    dist.init_process_group(
+        backend=config.backend,
+        init_method='env://',
+        world_size=config.world_size,
+        rank=config.local_rank
+    )
+    
+    # Only print from rank 0 to avoid spam
+    if is_rank_zero(config):
+        print(f"Distributed training initialized:")
+        print(f"  Backend: {config.backend}")
+        print(f"  World size: {config.world_size}")
+        print(f"  Current rank: {config.local_rank}")
+
+def cleanup_distributed(config):
+    """Clean up distributed training process group."""
+    if config.distributed:
+        dist.destroy_process_group()
+
+def is_rank_zero(config):
+    """Check if current process is rank 0 (master process)."""
+    return not config.distributed or config.local_rank == 0
+
+def reduce_tensor(tensor, config, op=dist.ReduceOp.SUM):
+    """
+    Reduce tensor across all processes in distributed training.
+    
+    Args:
+        tensor: Tensor to reduce
+        config: Config object with distributed training parameters  
+        op: Reduce operation (SUM, MEAN, etc.)
+        
+    Returns:
+        Reduced tensor
+    """
+    if not config.distributed:
+        return tensor
+    
+    # Clone tensor to avoid modifying original
+    reduced_tensor = tensor.clone()
+    dist.all_reduce(reduced_tensor, op=op)
+    
+    if op == dist.ReduceOp.SUM:
+        # Average across processes for metrics like loss
+        reduced_tensor = reduced_tensor / config.world_size
+    
+    return reduced_tensor
+
+def barrier(config):
+    """Synchronize all processes."""
+    if config.distributed:
+        dist.barrier()
 
 inference_test_cases = [
     "Napoleon was born in the city of",

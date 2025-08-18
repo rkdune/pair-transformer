@@ -28,3 +28,6 @@ models/
 # slurm
 .slurm
 logs/
+
+# random testing files
+test_distributed.py

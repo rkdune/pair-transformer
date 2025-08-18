@@ -10,13 +10,15 @@ load_dotenv()
 
 from utils import (Tokenizer, parse_args, save_model, print_device_info, 
                     print_training_header, print_training_progress, print_model_saved, 
-                    print_inference_header, print_tokenizer_data_info, print_optimizer_info, inference_test_cases)
+                    print_inference_header, print_tokenizer_data_info, print_optimizer_info, inference_test_cases,
+                    setup_distributed, cleanup_distributed, is_rank_zero, reduce_tensor, barrier)
 
 # imports from other files
 from config import Config
 from data import DataLoader
 from model import Transformer
 from optimizer import create_optimizer
+from torch.nn.parallel import DistributedDataParallel as DDP
 
 
 def inference(inference_config, inference_model, test_cases=inference_test_cases):
@@ -77,17 +79,28 @@ def inference(inference_config, inference_model, test_cases=inference_test_cases
 
 def training(model_config):
     
-    device = model_config.device
+    # Setup distributed training if enabled
+    setup_distributed(model_config)
     
-    # Print device info
-    print_device_info(device)
+    # Set device - for distributed training, use local rank
+    if model_config.distributed:
+        device = f"cuda:{model_config.local_rank}"
+        torch.cuda.set_device(model_config.local_rank)
+    else:
+        device = model_config.device
+    
+    # Display config and device info (only from rank 0)
+    if is_rank_zero(model_config):
+        model_config.display_config(extended=True)
+        print_device_info(device, model_config)
 
     torch.manual_seed(42)
 
-    if device == "cuda":
+    if device.startswith("cuda"):
         torch.cuda.manual_seed(42)
 
-    if model_config.wandb_enabled:
+    # Only initialize wandb from rank 0
+    if model_config.wandb_enabled and is_rank_zero(model_config):
         # Initialize wandb
         wandb.init(
             project=os.getenv("WANDB_PROJECT"),
@@ -123,34 +136,43 @@ def training(model_config):
         device,
         data_source=model_config.data_source,
         data_dir=model_config.data_dir,
-        use_validation=model_config.use_validation
+        use_validation=model_config.use_validation,
+        distributed=model_config.distributed,
+        rank=model_config.local_rank,
+        world_size=model_config.world_size
     )
     
     # Get data statistics
     data_stats = train_loader.get_stats()
     
-    # Print clean tokenizer and data info
-    print_tokenizer_data_info(
-        model_config.tokenizer, 
-        model_config.vocab_size,
-        data_stats
-    )
+    # Print clean tokenizer and data info (only from rank 0)
+    if is_rank_zero(model_config):
+        print_tokenizer_data_info(
+            model_config.tokenizer, 
+            model_config.vocab_size,
+            data_stats
+        )
 
     model = Transformer(model_config).to(device)
     
     # Apply torch.compile if enabled (default: True)
-    if model_config.torch_compile:
+    if model_config.torch_compile and is_rank_zero(model_config):
         print("🚀 Compiling model with torch.compile for faster training...")
-        model = torch.compile(model, mode="reduce-overhead")
-        # print("skipping torch compile for now")
-    else:
+    elif is_rank_zero(model_config):
         print("⚠️  torch.compile disabled - training will be slower")
+    
+    if model_config.torch_compile:
+        model = torch.compile(model, mode="reduce-overhead")
+    
+    # Wrap with DistributedDataParallel if distributed training is enabled
+    if model_config.distributed:
+        model = DDP(model, device_ids=[model_config.local_rank], output_device=model_config.local_rank)
 
     # Create optimizer based on config
     optimizer = create_optimizer(model, model_config)
     
-    # Print clean optimizer info
-    if hasattr(model_config, '_optimizer_info'):
+    # Print clean optimizer info (only from rank 0)
+    if hasattr(model_config, '_optimizer_info') and is_rank_zero(model_config):
         info = model_config._optimizer_info
         print_optimizer_info(
             info['type'],
@@ -173,20 +195,25 @@ def training(model_config):
     effective_batches_per_epoch = batches_per_epoch // model_config.accumulation_steps
     total_planned_steps = effective_batches_per_epoch * model_config.epochs
     
-    # Print training header with theoretical start loss
-    print_training_header(model_config.epochs, total_planned_steps)
-    print(f"Theoretical Start Loss: {np.log(model_config.vocab_size):.3f}")
+    # Print training header with theoretical start loss (only from rank 0)
+    if is_rank_zero(model_config):
+        print_training_header(model_config.epochs, total_planned_steps)
+        print(f"Theoretical Start Loss: {np.log(model_config.vocab_size):.3f}")
 
     for epoch in range(model_config.epochs):
-        print(f"\nEpoch {epoch + 1}/{model_config.epochs}")
+        if is_rank_zero(model_config):
+            print(f"\nEpoch {epoch + 1}/{model_config.epochs}")
         
         for effective_batch in range(effective_batches_per_epoch):
             # Check if we've reached the step limit
             if max_steps is not None and total_steps >= max_steps:
-                print(f"Reached maximum steps limit of {max_steps}. Stopping training.")
-                # Save model before early stopping (if enabled)
-                if model_config.save_model:
-                    save_model(model, model_config, total_steps, final_loss, "max_steps_reached")
+                if is_rank_zero(model_config):
+                    print(f"Reached maximum steps limit of {max_steps}. Stopping training.")
+                # Save model before early stopping (if enabled, only from rank 0)
+                if model_config.save_model and is_rank_zero(model_config):
+                    # Get the actual model from DDP wrapper if needed
+                    model_to_save = model.module if model_config.distributed else model
+                    save_model(model_to_save, model_config, total_steps, final_loss, "max_steps_reached")
                 break
             optimizer.zero_grad()
             loss_accum = 0.0
@@ -205,6 +232,11 @@ def training(model_config):
                 # Backward pass
                 loss.backward()
 
+            # Reduce accumulated loss across all processes for logging
+            if model_config.distributed:
+                loss_tensor = torch.tensor(loss_accum, device=device)
+                loss_accum = reduce_tensor(loss_tensor, model_config).item()
+            
             # Calculate gradient norm and step after accumulation
             grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), float('inf'))
             optimizer.step()
@@ -216,10 +248,12 @@ def training(model_config):
             batch_end_time = time.time()
             time_per_step = batch_end_time - batch_start_time
 
-            # Periodic saving if enabled
+            # Periodic saving if enabled (only from rank 0)
             if (model_config.save_model and model_config.save_every is not None and 
-                total_steps % model_config.save_every == 0):
-                save_model(model, model_config, total_steps, final_loss, f"step_{total_steps}")
+                total_steps % model_config.save_every == 0 and is_rank_zero(model_config)):
+                # Get the actual model from DDP wrapper if needed
+                model_to_save = model.module if model_config.distributed else model
+                save_model(model_to_save, model_config, total_steps, final_loss, f"step_{total_steps}")
 
             # Calculate tokens per second (for effective batch)
             total_tokens = model_config.effective_batch_size * model_config.context_len
@@ -236,7 +270,8 @@ def training(model_config):
                 current_lr = optimizer.param_groups[0]['lr']
                 lr_display = f"{current_lr:.6f}"
 
-            if model_config.wandb_enabled:
+            # Only log from rank 0
+            if model_config.wandb_enabled and is_rank_zero(model_config):
                 # Calculate global elapsed time
                 global_elapsed_time = time.time() - global_start_time
                 
@@ -261,8 +296,8 @@ def training(model_config):
 
                 wandb.log(wandb_metrics)
 
-            # Clean progress reporting
-            if total_steps % 100 == 0 or total_steps == 1 or effective_batch + 1 == effective_batches_per_epoch:
+            # Clean progress reporting (only from rank 0)
+            if (total_steps % 100 == 0 or total_steps == 1 or effective_batch + 1 == effective_batches_per_epoch) and is_rank_zero(model_config):
                 print_training_progress(total_steps, total_planned_steps, loss_accum, 
                                       grad_norm.item(), tokens_per_sec, lr_display, time_per_step,
                                       is_final=(effective_batch + 1 == effective_batches_per_epoch))
@@ -271,19 +306,27 @@ def training(model_config):
         if max_steps is not None and total_steps >= max_steps:
             break
 
-    # Save final model after training completion (if enabled)
-    if model_config.save_model and final_loss is not None:  # Only save if enabled and we completed at least one step
-        save_path = save_model(model, model_config, total_steps, final_loss, "final")
+    # Save final model after training completion (if enabled, only from rank 0)
+    if model_config.save_model and final_loss is not None and is_rank_zero(model_config):
+        # Get the actual model from DDP wrapper if needed
+        model_to_save = model.module if model_config.distributed else model
+        save_path = save_model(model_to_save, model_config, total_steps, final_loss, "final")
         print_model_saved(save_path)
 
-    if model_config.wandb_enabled:
+    # Clean up distributed training
+    if model_config.distributed:
+        cleanup_distributed(model_config)
+
+    # Only finish wandb from rank 0
+    if model_config.wandb_enabled and is_rank_zero(model_config):
         wandb.finish()
 
-    return model
+    # Return the unwrapped model for inference
+    return model.module if model_config.distributed else model
 
 
 if __name__ == "__main__":
-    os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3,4,5,6"
+    # Don't set CUDA_VISIBLE_DEVICES here - let torchrun handle it
     torch.set_float32_matmul_precision("high")
     
     # Configure CUDAGraph to skip dynamic shapes for better performance
@@ -296,13 +339,14 @@ if __name__ == "__main__":
     # Set default wandb_enabled if not specified in overrides
     if 'wandb_enabled' not in config_overrides:
         config_overrides['wandb_enabled'] = True
-        config_overrides['run'] = "slurm testing"
-        config_overrides['max_steps'] = 1000
+        config_overrides['run'] = "we are back?"
+        # config_overrides['max_steps'] = 1000
     config = Config(**config_overrides)
-    config.display_config(extended=True)
 
     train = True
     if train:
         model = training(config)
 
-    inference(config, model)
+    # Only run inference from rank 0 to avoid multiple inference outputs
+    if is_rank_zero(config):
+        inference(config, model)

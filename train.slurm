@@ -31,10 +31,15 @@ MASTER_NODE_ADDR=$(srun --nodes=1 --ntasks=1 -w "$MASTER_NODE" hostname --ip-add
 # Find an available port
 RDZV_PORT=$(python3 -c "import socket; s=socket.socket(); s.bind(('', 0)); print(s.getsockname()[1]); s.close()")
 
-# Log start of training run
-log_info "Starting training run..."
+# Set training parameters (can be overridden by command line args)
+export MAX_STEPS=${MAX_STEPS:-10000}
+export LEARNING_RATE=${LEARNING_RATE:-3e-4}
+export RUN_NAME=${RUN_NAME:-"slurm_run"}
 
-# Run the script using torchrun
+# Log start of training run
+log_info "Starting training run with MAX_STEPS=$MAX_STEPS, LR=$LEARNING_RATE..."
+
+# Run the script using torchrun with forwarded arguments
 torchrun \
 --nnodes 1 \
 --nproc_per_node 8 \
@@ -42,7 +47,7 @@ torchrun \
 --rdzv_backend c10d \
 --rdzv_endpoint $MASTER_NODE_ADDR:$RDZV_PORT \
 --max-restarts 16 \
-train.py
+train.py -- --max_steps=$MAX_STEPS --lr=$LEARNING_RATE --run=$RUN_NAME "$@"
 
 # Log end of training run
 log_info "Job finished."

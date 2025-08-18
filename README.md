@@ -35,7 +35,12 @@ uv run train.py --run "name" --max_steps=5
 
 
 # gpu ready training run
-uv run train.py --run "name"
+uv run train.py --run "name"  
+
+# with distributed training
+uv run torchrun --nproc_per_node=8 train.py --max_steps=2000
+
+
 ```
 
 If you are on a computer cluster that uses slurm
@@ -158,6 +163,16 @@ WANDB_ENTITY=your_entity_name
 
 <img src="assets/whiteboard.webp" width="400"/>
 
+### tmux
+```bash
+tmux new -s your_session_name_here
+# run your original command here, e.g. uv run train.py
+# to detach tmux, press Ctrl+B, then D
+tmux ls # to see if active tmux sessions exist
+tmux attach -t your_session_name_here # to reattach
+exit # to close tmux session completely
+```
+
 ### todos
 - [x] fix softmax after all mlps, should only be on last
 - [x] add layer normalization
@@ -181,6 +196,8 @@ WANDB_ENTITY=your_entity_name
 - [x] data loader chunking
 - [x] high precision matmul
 - [x] create ~20 different inference test cases other than napoleon
+- [x] flash attention
+- [ ] cosine lr scheduling
 - [ ] calculate mfu 
     - compute as actual tokens/sec divided by theoretical peak tokens/sec, where theoretical peak tokens/sec is (GPU count × theoretical peak FLOPS per GPU) divided by 6N + 12LHQT
     - DGX B200 spec sheet, for entire 8x system the theoretical peak FLOPS is 72petaFLOPS at FP8, and 144 petaFLOPS at FP4 precision.
