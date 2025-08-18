@@ -255,9 +255,12 @@ def training(model_config):
                 model_to_save = model.module if model_config.distributed else model
                 save_model(model_to_save, model_config, total_steps, final_loss, f"step_{total_steps}")
 
-            # Calculate tokens per second (for effective batch)
-            total_tokens = model_config.effective_batch_size * model_config.context_len
-            tokens_per_sec = total_tokens / time_per_step
+            # Calculate tokens per second (per-rank)
+            per_rank_tokens = model_config.batch_size * model_config.accumulation_steps * model_config.context_len
+            tokens_per_sec = per_rank_tokens / time_per_step
+            
+            # Calculate global tokens per second (total across all ranks)
+            global_tokens_per_sec = tokens_per_sec * model_config.world_size if model_config.distributed else tokens_per_sec
 
             # Update learning rate with cosine annealing schedule
             if model_config.use_cosine_lr and max_steps is not None:
@@ -299,6 +302,7 @@ def training(model_config):
                     "grad_norm": grad_norm.item(),
                     "time_per_step": time_per_step,
                     "tokens_per_sec": tokens_per_sec,
+                    "global_tokens_per_sec": global_tokens_per_sec,
                     "global_time": global_elapsed_time
                 }
 
@@ -312,10 +316,10 @@ def training(model_config):
                 wandb.log(wandb_metrics)
 
             # Clean progress reporting (only from rank 0)
-            if (total_steps % 100 == 0 or total_steps == 1 or effective_batch + 1 == effective_batches_per_epoch) and is_rank_zero(model_config):
+            if (total_steps % 50 == 0 or total_steps == 1 or effective_batch + 1 == effective_batches_per_epoch) and is_rank_zero(model_config):
                 print_training_progress(total_steps, total_planned_steps, loss_accum, 
                                       grad_norm.item(), tokens_per_sec, lr_display, time_per_step,
-                                      is_final=(effective_batch + 1 == effective_batches_per_epoch))
+                                      global_tok_per_sec, is_final=(effective_batch + 1 == effective_batches_per_epoch))
         
         # Break out of epoch loop if we've reached steps limit
         if max_steps is not None and total_steps >= max_steps:

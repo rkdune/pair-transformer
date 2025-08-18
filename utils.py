@@ -88,10 +88,17 @@ def print_training_header(epochs, total_steps=None):
     else:
         print(f"Training: {epochs} epoch(s)")
 
-def print_training_progress(step, total_steps, loss, grad_norm, tok_per_sec, lr_display, time_per_step, is_final=False):
+def print_training_progress(step, total_steps, loss, grad_norm, tok_per_sec, lr_display, time_per_step, global_tok_per_sec=None, is_final=False):
     """Print clean training progress with detailed learning rate info."""
     prefix = "Final" if is_final else f"Step {step}"
-    print(f"{prefix}: Loss={loss:.3f}, Grad={grad_norm:.3f}, LR={lr_display}, Time/Step={time_per_step:.3f}s, Tok/s={tok_per_sec:,.0f}")
+    
+    # Build the tokens/sec display
+    if global_tok_per_sec is not None and global_tok_per_sec != tok_per_sec:
+        tok_display = f"Tok/s={tok_per_sec:,.0f} (Global: {global_tok_per_sec:,.0f})"
+    else:
+        tok_display = f"Tok/s={tok_per_sec:,.0f}"
+    
+    print(f"{prefix}: Loss={loss:.3f}, Grad={grad_norm:.3f}, LR={lr_display}, Time/Step={time_per_step:.3f}s, {tok_display}")
 
 def print_model_saved(save_path):
     """Print clean model saved message."""
