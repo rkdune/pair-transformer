@@ -3,9 +3,9 @@ from utils import Tokenizer
 
 class Config():
     # CHANGEABLE MODEL ARCHITECTURE PARAMS
-    embedding_dim = 720
-    num_blocks = 2
-    num_heads = 2
+    embedding_dim = 2080
+    num_blocks = 16
+    num_heads = 20
     context_len = 1024
 
     # TRAINING HYPERPARAMS
@@ -19,6 +19,11 @@ class Config():
     weight_decay = 0.01
     use_muon = True  # whether to use Muon optimizer for hidden layers
     max_steps = None  # If None, train for full epochs; if set, limit to this many steps
+    
+    # Learning Rate Scheduling
+    use_cosine_lr = True  # Enable cosine annealing learning rate schedule
+    lr_warmup_ratio = 0.1  # Warmup steps as ratio of total steps (0.1 = 10% of total steps)
+    min_lr_ratio = 0.1  # Minimum LR as ratio of max LR (0.1 = 10% of max LR)
 
     # LOGGING & OBSERVABILITY
     wandb_enabled = True
@@ -28,7 +33,7 @@ class Config():
     # MODEL SAVING
     save_model = True  # Enable model saving (must be explicitly set to True)
     save_model_dir = "models"  # Directory to save models
-    save_every = None  # If set, save model every N steps
+    save_every = 20000  # If set, save model every N steps
 
     # MODEL COMPILATION
     torch_compile = True  # Enable torch.compile for faster training (disable with --torch_compile=False)

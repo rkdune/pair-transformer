@@ -156,6 +156,7 @@ def parse_args():
     # Logging parameters
     parser.add_argument('--wandb_enabled', type=bool, help='Enable wandb logging')
     parser.add_argument('--run', type=str, help='Name for wandb run')
+    parser.add_argument('--name', type=str, help='Name for wandb run (alias for --run, torchrun-safe)')
     
     # Model saving parameters
     parser.add_argument('--save_model', type=bool, help='Enable model saving (default: False)')
@@ -165,10 +166,21 @@ def parse_args():
     # Model compilation parameters
     parser.add_argument('--torch_compile', type=bool, help='Enable torch.compile for faster training (default: True)')
     
+    # Learning rate scheduling parameters
+    parser.add_argument('--use_cosine_lr', type=bool, help='Enable cosine learning rate schedule')
+    parser.add_argument('--lr_warmup_ratio', type=float, help='Warmup steps as ratio of total steps (e.g. 0.1 = 10%)')
+    parser.add_argument('--min_lr_ratio', type=float, help='Minimum LR as ratio of max LR (e.g. 0.1 = 10%)')
+    
     args = parser.parse_args()
     
     # Convert to dict, filtering out None values
     config_overrides = {k: v for k, v in vars(args).items() if v is not None}
+    
+    # Handle --name alias for --run (torchrun-safe alternative)
+    if 'name' in config_overrides:
+        config_overrides['run'] = config_overrides['name']
+        del config_overrides['name']  # Remove the alias to avoid confusion
+    
     return config_overrides
 
 
@@ -358,6 +370,36 @@ def barrier(config):
     """Synchronize all processes."""
     if config.distributed:
         dist.barrier()
+
+def get_cosine_lr(step, max_steps, max_lr, min_lr_ratio=0.1, warmup_ratio=0.1):
+    """
+    Cosine annealing learning rate with linear warmup.
+    
+    Args:
+        step: Current training step
+        max_steps: Total training steps
+        max_lr: Maximum learning rate (after warmup)
+        min_lr_ratio: Minimum LR as ratio of max_lr (default: 0.1 = 10%)
+        warmup_ratio: Warmup steps as ratio of total steps (default: 0.1 = 10%)
+        
+    Returns:
+        Learning rate for current step
+    """
+    import math
+    
+    warmup_steps = int(max_steps * warmup_ratio)
+    
+    # Linear warmup
+    if step < warmup_steps:
+        return max_lr * step / warmup_steps
+    
+    # Cosine annealing
+    min_lr = max_lr * min_lr_ratio
+    progress = (step - warmup_steps) / (max_steps - warmup_steps)
+    progress = min(progress, 1.0)  # Clamp to [0, 1]
+    
+    cosine_factor = 0.5 * (1.0 + math.cos(math.pi * progress))
+    return min_lr + (max_lr - min_lr) * cosine_factor
 
 inference_test_cases = [
     "Napoleon was born in the city of",

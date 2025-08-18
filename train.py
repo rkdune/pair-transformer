@@ -11,7 +11,7 @@ load_dotenv()
 from utils import (Tokenizer, parse_args, save_model, print_device_info, 
                     print_training_header, print_training_progress, print_model_saved, 
                     print_inference_header, print_tokenizer_data_info, print_optimizer_info, inference_test_cases,
-                    setup_distributed, cleanup_distributed, is_rank_zero, reduce_tensor, barrier)
+                    setup_distributed, cleanup_distributed, is_rank_zero, reduce_tensor, barrier, get_cosine_lr)
 
 # imports from other files
 from config import Config
@@ -259,6 +259,21 @@ def training(model_config):
             total_tokens = model_config.effective_batch_size * model_config.context_len
             tokens_per_sec = total_tokens / time_per_step
 
+            # Update learning rate with cosine annealing schedule
+            if model_config.use_cosine_lr and max_steps is not None:
+                # Calculate new learning rates
+                new_muon_lr = get_cosine_lr(total_steps, max_steps, model_config.muon_lr, 
+                                          model_config.min_lr_ratio, model_config.lr_warmup_ratio)
+                new_adamw_lr = get_cosine_lr(total_steps, max_steps, model_config.lr, 
+                                           model_config.min_lr_ratio, model_config.lr_warmup_ratio)
+                
+                # Update optimizer learning rates
+                if model_config.use_muon and hasattr(optimizer, 'param_groups') and len(optimizer.param_groups) > 1:
+                    optimizer.param_groups[0]['lr'] = new_muon_lr  # Hidden weights (Muon)
+                    optimizer.param_groups[1]['lr'] = new_adamw_lr  # Other params (AdamW)
+                else:
+                    optimizer.param_groups[0]['lr'] = new_adamw_lr
+
             # Get current learning rate
             if model_config.use_muon and hasattr(optimizer, 'param_groups') and len(optimizer.param_groups) > 1:
                 # For Muon optimizer, show both learning rates
@@ -339,7 +354,7 @@ if __name__ == "__main__":
     # Set default wandb_enabled if not specified in overrides
     if 'wandb_enabled' not in config_overrides:
         config_overrides['wandb_enabled'] = True
-        config_overrides['run'] = "we are back?"
+        # config_overrides['run'] = "we are so back."
         # config_overrides['max_steps'] = 1000
     config = Config(**config_overrides)
 
